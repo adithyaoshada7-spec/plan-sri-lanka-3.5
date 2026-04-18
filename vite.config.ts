@@ -82,6 +82,37 @@ function escapeXml(s: string): string {
 }
 
 // https://vite.dev/config/
-export default defineConfig({
-  plugins: [react(), tailwindcss(), sitemapPlugin()],
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '')
+  // Prefer process.env (CI / Vercel build) then .env files. Allow SUPABASE_* without VITE_.
+  const supabaseUrl =
+    process.env.VITE_SUPABASE_URL ||
+    process.env.SUPABASE_URL ||
+    env.VITE_SUPABASE_URL ||
+    ''
+  const supabaseAnonKey =
+    process.env.VITE_SUPABASE_ANON_KEY ||
+    process.env.SUPABASE_ANON_KEY ||
+    env.VITE_SUPABASE_ANON_KEY ||
+    ''
+  const supabaseReady = Boolean(
+    supabaseUrl.trim() && supabaseAnonKey.trim(),
+  )
+
+  if (process.env.VERCEL === '1' && mode === 'production' && !supabaseReady) {
+    console.warn(
+      '\n[plan-srilanka] No Supabase URL/key at build time (checked VITE_SUPABASE_* and SUPABASE_*). ' +
+        'The client bundle may be empty until /api/supabase-config runs on Vercel. ' +
+        'Set VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY (or SUPABASE_URL + SUPABASE_ANON_KEY) ' +
+        'under Project → Settings → Environment Variables for Production, then redeploy.\n',
+    )
+  }
+
+  return {
+    define: {
+      'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(supabaseUrl),
+      'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(supabaseAnonKey),
+    },
+    plugins: [react(), tailwindcss(), sitemapPlugin()],
+  }
 })

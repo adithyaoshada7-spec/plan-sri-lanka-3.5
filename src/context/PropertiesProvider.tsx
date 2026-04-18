@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
@@ -12,6 +13,10 @@ import {
   PROPERTIES_STORAGE_KEY,
 } from '../admin/constants'
 import { PropertiesContext } from './propertiesContext'
+import { fetchSiteContent, saveSiteContent } from '../lib/siteContent'
+import { getSupabase, isSupabaseConfigured } from '../lib/supabaseClient'
+
+const SAVE_DEBOUNCE_MS = 600
 
 function loadFromStorage(): Property[] | null {
   try {
@@ -45,7 +50,6 @@ function loadAvailabilityByPropertyFromStorage(
     if (!raw) return null
     const data = JSON.parse(raw) as unknown
 
-    // Migration: old storage used one shared RoomOption[] for all properties.
     if (Array.isArray(data)) {
       const shared = data as RoomOption[]
       return Object.fromEntries(
@@ -75,26 +79,104 @@ function loadAvailabilityByPropertyFromStorage(
 }
 
 export function PropertiesProvider({ children }: { children: ReactNode }) {
-  const [properties, setProperties] = useState<Property[]>(
-    () => loadFromStorage() ?? featuredStays,
+  const cloudMode = isSupabaseConfigured()
+
+  const [properties, setProperties] = useState<Property[]>(() =>
+    cloudMode ? featuredStays : loadFromStorage() ?? featuredStays,
   )
   const [roomOptionsByProperty, setRoomOptionsByProperty] = useState<
     Record<string, RoomOption[]>
-  >(
-    () =>
-      loadAvailabilityByPropertyFromStorage(properties) ??
-      buildDefaultAvailabilityByProperty(properties),
-  )
+  >(() => {
+    const propsForRooms = cloudMode
+      ? featuredStays
+      : loadFromStorage() ?? featuredStays
+    return (
+      cloudMode
+        ? buildDefaultAvailabilityByProperty(featuredStays)
+        : loadAvailabilityByPropertyFromStorage(propsForRooms) ??
+          buildDefaultAvailabilityByProperty(propsForRooms)
+    )
+  })
+
+  const [initialLoadDone, setInitialLoadDone] = useState(!cloudMode)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  const clearSaveError = useCallback(() => setSaveError(null), [])
 
   useEffect(() => {
-    localStorage.setItem(PROPERTIES_STORAGE_KEY, JSON.stringify(properties))
-  }, [properties])
+    if (!cloudMode) return
+
+    let cancelled = false
+
+    const loadFromSupabase = async () => {
+      setLoadError(null)
+      const { data: row, error: fetchErr } = await fetchSiteContent()
+      if (cancelled) return
+      if (fetchErr) setLoadError(fetchErr)
+      if (row && row.properties.length > 0) {
+        setProperties(row.properties)
+        setRoomOptionsByProperty(row.roomOptionsByProperty)
+      }
+      setInitialLoadDone(true)
+    }
+
+    void loadFromSupabase()
+
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) void loadFromSupabase()
+    }
+    window.addEventListener('pageshow', onPageShow)
+
+    return () => {
+      cancelled = true
+      window.removeEventListener('pageshow', onPageShow)
+    }
+  }, [cloudMode])
+
   useEffect(() => {
+    if (cloudMode) return
+    localStorage.setItem(PROPERTIES_STORAGE_KEY, JSON.stringify(properties))
+  }, [properties, cloudMode])
+
+  useEffect(() => {
+    if (cloudMode) return
     localStorage.setItem(
       AVAILABILITY_STORAGE_KEY,
       JSON.stringify(roomOptionsByProperty),
     )
-  }, [roomOptionsByProperty])
+  }, [roomOptionsByProperty, cloudMode])
+
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    if (!cloudMode || !initialLoadDone) return
+
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
+
+    saveTimeoutRef.current = setTimeout(() => {
+      saveTimeoutRef.current = null
+      void (async () => {
+        const supabase = getSupabase()
+        if (!supabase) return
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
+        if (!session) return
+
+        const { error } = await saveSiteContent(
+          properties,
+          roomOptionsByProperty,
+        )
+        if (error) setSaveError(error)
+        else setSaveError(null)
+      })()
+    }, SAVE_DEBOUNCE_MS)
+
+    return () => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
+    }
+  }, [cloudMode, initialLoadDone, properties, roomOptionsByProperty])
 
   const updateProperty = useCallback((id: string, next: Property) => {
     setProperties((prev) =>
@@ -148,11 +230,29 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const resetToDefaults = useCallback(() => {
-    localStorage.removeItem(PROPERTIES_STORAGE_KEY)
-    localStorage.removeItem(AVAILABILITY_STORAGE_KEY)
-    setProperties([...featuredStays])
-    setRoomOptionsByProperty(buildDefaultAvailabilityByProperty(featuredStays))
-  }, [])
+    const nextProps = [...featuredStays]
+    const nextRooms = buildDefaultAvailabilityByProperty(featuredStays)
+    setProperties(nextProps)
+    setRoomOptionsByProperty(nextRooms)
+
+    if (!cloudMode) {
+      localStorage.removeItem(PROPERTIES_STORAGE_KEY)
+      localStorage.removeItem(AVAILABILITY_STORAGE_KEY)
+      return
+    }
+
+    void (async () => {
+      const supabase = getSupabase()
+      if (!supabase) return
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      if (!session) return
+      const { error } = await saveSiteContent(nextProps, nextRooms)
+      if (error) setSaveError(error)
+      else setSaveError(null)
+    })()
+  }, [cloudMode])
 
   const value = useMemo(
     () => ({
@@ -163,6 +263,11 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
       addRoomOption,
       removeRoomOption,
       resetToDefaults,
+      cloudMode,
+      initialLoadDone,
+      loadError,
+      saveError,
+      clearSaveError,
     }),
     [
       properties,
@@ -172,6 +277,11 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
       addRoomOption,
       removeRoomOption,
       resetToDefaults,
+      cloudMode,
+      initialLoadDone,
+      loadError,
+      saveError,
+      clearSaveError,
     ],
   )
 

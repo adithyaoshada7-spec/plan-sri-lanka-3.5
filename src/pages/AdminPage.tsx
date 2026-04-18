@@ -1,4 +1,5 @@
 import {
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -13,6 +14,8 @@ import {
 import type { RoomOption } from '../data/availability'
 import type { Property } from '../data/properties'
 import { useProperties } from '../context/useProperties'
+import { getSupabase, isSupabaseConfigured } from '../lib/supabaseClient'
+import { uploadPropertyImage } from '../lib/uploadPropertyImage'
 
 function isSessionValid() {
   return sessionStorage.getItem(ADMIN_SESSION_KEY) === '1'
@@ -153,8 +156,12 @@ function PropertyEditor({ property }: { property: Property }) {
   const [draft, setDraft] = useState(() => toDraft(property))
   const [cardUploadHint, setCardUploadHint] = useState<string | null>(null)
   const [heroUploadHint, setHeroUploadHint] = useState<string | null>(null)
+  const [uploadingField, setUploadingField] = useState<'card' | 'hero' | null>(
+    null,
+  )
   const cardFileRef = useRef<HTMLInputElement>(null)
   const heroFileRef = useRef<HTMLInputElement>(null)
+  const cloudImages = isSupabaseConfigured()
 
   const field = (key: keyof Draft) => ({
     value: draft[key],
@@ -168,7 +175,7 @@ function PropertyEditor({ property }: { property: Property }) {
   }
 
   const handleImageFile =
-    (field: 'image' | 'heroImage') => (e: ChangeEvent<HTMLInputElement>) => {
+    (field: 'image' | 'heroImage') => async (e: ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0]
       e.target.value = ''
       const setHint = field === 'image' ? setCardUploadHint : setHeroUploadHint
@@ -184,11 +191,28 @@ function PropertyEditor({ property }: { property: Property }) {
         return
       }
       setHint(null)
+
+      if (cloudImages) {
+        setUploadingField(field === 'image' ? 'card' : 'hero')
+        const result = await uploadPropertyImage(property.id, field, file)
+        setUploadingField(null)
+        if ('error' in result) {
+          setHint(result.error)
+          return
+        }
+        setDraft((prev) => {
+          const next = { ...prev, [field]: result.publicUrl }
+          updateProperty(property.id, draftToProperty(property.id, next))
+          return next
+        })
+        return
+      }
+
       const reader = new FileReader()
       reader.onload = () => {
-        const result = reader.result
-        if (typeof result === 'string') {
-          setDraft((prev) => ({ ...prev, [field]: result }))
+        const res = reader.result
+        if (typeof res === 'string') {
+          setDraft((prev) => ({ ...prev, [field]: res }))
         }
       }
       reader.readAsDataURL(file)
@@ -302,10 +326,11 @@ function PropertyEditor({ property }: { property: Property }) {
             />
             <button
               type="button"
+              disabled={uploadingField !== null}
               onClick={() => cardFileRef.current?.click()}
-              className="shrink-0 rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-800 hover:bg-neutral-100"
+              className="shrink-0 rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-800 hover:bg-neutral-100 disabled:opacity-50"
             >
-              Upload card image
+              {uploadingField === 'card' ? 'Uploading…' : 'Upload card image'}
             </button>
           </div>
           {draft.image ? (
@@ -356,10 +381,11 @@ function PropertyEditor({ property }: { property: Property }) {
             />
             <button
               type="button"
+              disabled={uploadingField !== null}
               onClick={() => heroFileRef.current?.click()}
-              className="shrink-0 rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-800 hover:bg-neutral-100"
+              className="shrink-0 rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-800 hover:bg-neutral-100 disabled:opacity-50"
             >
-              Upload hero image
+              {uploadingField === 'hero' ? 'Uploading…' : 'Upload hero image'}
             </button>
           </div>
           {draft.heroImage ? (
@@ -384,12 +410,23 @@ function PropertyEditor({ property }: { property: Property }) {
         </div>
 
         <p className="sm:col-span-2 m-0 text-xs text-neutral-500">
-          <strong>Uploads</strong> store images in this browser (data URLs in
-          localStorage) — fine for testing; large files use more storage. For
-          production, use paths under{' '}
-          <code className="rounded bg-neutral-200 px-1">public/images/</code> as{' '}
-          <code className="rounded bg-neutral-200 px-1">/images/…</code> or a
-          hosted URL.
+          {cloudImages ? (
+            <>
+              <strong>Uploads</strong> go to Supabase Storage (public URLs). You
+              must be signed in. You can also paste{' '}
+              <code className="rounded bg-neutral-200 px-1">/images/…</code> or
+              any https URL.
+            </>
+          ) : (
+            <>
+              <strong>Uploads</strong> store images in this browser (data URLs in
+              localStorage) — fine for testing; large files use more storage. For
+              production, use paths under{' '}
+              <code className="rounded bg-neutral-200 px-1">public/images/</code>{' '}
+              as <code className="rounded bg-neutral-200 px-1">/images/…</code> or
+              a hosted URL.
+            </>
+          )}
         </p>
         <label className="sm:col-span-2 flex flex-col gap-1 text-sm">
           <span className="font-medium text-neutral-700">Badge (optional)</span>
@@ -662,32 +699,84 @@ function QuickAvailabilityManager({
 }
 
 export function AdminPage() {
-  const { properties, roomOptionsByProperty, resetToDefaults } = useProperties()
-  const [authed, setAuthed] = useState(() => isSessionValid())
+  const {
+    properties,
+    roomOptionsByProperty,
+    resetToDefaults,
+    cloudMode,
+    initialLoadDone,
+    loadError,
+    saveError,
+    clearSaveError,
+  } = useProperties()
+  const supabaseConfigured = isSupabaseConfigured()
+  const [authed, setAuthed] = useState(() => {
+    if (supabaseConfigured) return false
+    return isSessionValid()
+  })
   const [password, setPassword] = useState('')
+  const [email, setEmail] = useState('')
   const [error, setError] = useState('')
   const [searchParams, setSearchParams] = useSearchParams()
   const section = searchParams.get('section')
+
+  useEffect(() => {
+    if (!supabaseConfigured) return
+    const supabase = getSupabase()
+    if (!supabase) return
+    void supabase.auth.getSession().then(({ data: { session } }) => {
+      setAuthed(!!session)
+    })
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthed(!!session)
+    })
+    return () => subscription.unsubscribe()
+  }, [supabaseConfigured])
 
   const sorted = useMemo(
     () => [...properties].sort((a, b) => Number(a.id) - Number(b.id)),
     [properties],
   )
 
-  const handleLogin = (e: FormEvent) => {
+  const handleLogin = async (e: FormEvent) => {
     e.preventDefault()
-    if (password === ADMIN_PASSWORD) {
+    setError('')
+    clearSaveError()
+    if (supabaseConfigured) {
+      const supabase = getSupabase()
+      if (!supabase) {
+        setError('Supabase client is not available.')
+        return
+      }
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      })
+      if (authError) {
+        setError(authError.message)
+        return
+      }
+      setAuthed(true)
+      setPassword('')
+      setEmail('')
+    } else if (password === ADMIN_PASSWORD) {
       setSession()
       setAuthed(true)
-      setError('')
       setPassword('')
     } else {
       setError('Incorrect password.')
     }
   }
 
-  const handleLogout = () => {
-    clearSession()
+  const handleLogout = async () => {
+    clearSaveError()
+    if (supabaseConfigured) {
+      await getSupabase()?.auth.signOut()
+    } else {
+      clearSession()
+    }
     setAuthed(false)
   }
 
@@ -700,20 +789,41 @@ export function AdminPage() {
         <div className="mx-auto w-full max-w-md rounded-lg border border-neutral-200 bg-white p-8 shadow-md">
           <h1 className="m-0 text-xl font-bold text-neutral-900">Admin</h1>
           <p className="mt-2 text-sm text-neutral-600">
-            Sign in to edit property cards shown on the home page.
+            {supabaseConfigured
+              ? 'Sign in with your Supabase admin user (Authentication → Users).'
+              : 'Sign in to edit property cards shown on the home page.'}
           </p>
           <form onSubmit={handleLogin} className="mt-6 space-y-4">
+            {supabaseConfigured ? (
+              <label className="block text-sm font-medium text-neutral-700">
+                Email
+                <input
+                  type="email"
+                  autoComplete="username"
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value)
+                    setError('')
+                  }}
+                  className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2"
+                  required
+                />
+              </label>
+            ) : null}
             <label className="block text-sm font-medium text-neutral-700">
               Password
               <input
                 type="password"
-                autoComplete="current-password"
+                autoComplete={
+                  supabaseConfigured ? 'current-password' : 'current-password'
+                }
                 value={password}
                 onChange={(e) => {
                   setPassword(e.target.value)
                   setError('')
                 }}
                 className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2"
+                required
               />
             </label>
             {error && <p className="text-sm text-red-600">{error}</p>}
@@ -738,9 +848,16 @@ export function AdminPage() {
     <div className="min-h-screen bg-neutral-100">
       <header className="border-b border-neutral-200 bg-white px-4 py-4 shadow-sm">
         <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-3">
-          <h1 className="m-0 text-lg font-bold text-neutral-900">
-            plan-srilanka — Admin
-          </h1>
+          <div>
+            <h1 className="m-0 text-lg font-bold text-neutral-900">
+              plan-srilanka — Admin
+            </h1>
+            {cloudMode && !initialLoadDone ? (
+              <p className="m-0 mt-1 text-xs text-neutral-500">
+                Loading site content…
+              </p>
+            ) : null}
+          </div>
           <div className="flex items-center gap-2">
             <Link
               to="/"
@@ -758,6 +875,24 @@ export function AdminPage() {
           </div>
         </div>
       </header>
+
+      {cloudMode && (loadError || saveError) ? (
+        <div
+          className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+          role="status"
+        >
+          {loadError ? (
+            <p className="m-0">
+              <strong>Could not load remote content:</strong> {loadError}
+            </p>
+          ) : null}
+          {saveError ? (
+            <p className={`m-0 ${loadError ? 'mt-2' : ''}`}>
+              <strong>Could not save:</strong> {saveError}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="mx-auto max-w-3xl space-y-6 px-4 py-8">
         {!showHomesEditor && !showAvailabilityEditor && (
@@ -778,12 +913,9 @@ export function AdminPage() {
                   Homes guests love
                 </h3>
                 <p className="m-0 mt-2 text-sm text-neutral-600">
-                  Changes apply to the &quot;Homes guests love&quot; cards and are
-                  stored in this browser (
-                  <code className="rounded bg-neutral-200 px-1">
-                    localStorage
-                  </code>
-                  ).
+                  {cloudMode
+                    ? 'Edits sync to Supabase after you sign in — everyone sees the same listings on the live site.'
+                    : 'Changes apply to the “Homes guests love” cards and are stored in this browser (localStorage).'}
                 </p>
               </button>
 
@@ -812,12 +944,9 @@ export function AdminPage() {
                   Homes guests love
                 </h2>
                 <p className="m-0 mt-1 text-sm text-neutral-600">
-                  Changes apply to the &quot;Homes guests love&quot; cards and are
-                  stored in this browser (
-                  <code className="rounded bg-neutral-200 px-1">
-                    localStorage
-                  </code>
-                  ).
+                  {cloudMode
+                    ? 'Edits sync to Supabase — sign in so saves reach the database.'
+                    : 'Changes apply to the “Homes guests love” cards and are stored in this browser (localStorage).'}
                 </p>
               </div>
               <button
@@ -835,7 +964,9 @@ export function AdminPage() {
                 onClick={() => {
                   if (
                     window.confirm(
-                      'Reset all listings to the built-in defaults? This clears saved edits in this browser.',
+                      cloudMode
+                        ? 'Reset all listings to the built-in defaults? If you are signed in, this updates Supabase for everyone.'
+                        : 'Reset all listings to the built-in defaults? This clears saved edits in this browser.',
                     )
                   ) {
                     resetToDefaults()
@@ -849,12 +980,26 @@ export function AdminPage() {
 
             <section className="rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
               <h3 className="m-0 text-base font-semibold text-neutral-900">
-                Homes guests love — images from the repo
+                {cloudMode ? 'Images — repo or Supabase Storage' : 'Homes guests love — images from the repo'}
               </h3>
               <p className="m-0 mt-1 text-sm text-neutral-600">
-                Put image files in <code className="rounded bg-neutral-200 px-1">public/images/</code>, point each card at{' '}
-                <code className="rounded bg-neutral-200 px-1">/images/…</code>, commit and deploy. Then use Admin here to tweak copy or paths per browser (localStorage), or edit defaults in{' '}
-                <code className="rounded bg-neutral-200 px-1">src/data/properties.ts</code>.
+                {cloudMode ? (
+                  <>
+                    Uploads go to the <strong>property-images</strong> bucket (public
+                    URLs). You can also use <code className="rounded bg-neutral-200 px-1">/images/…</code> from{' '}
+                    <code className="rounded bg-neutral-200 px-1">public/images/</code> after
+                    deploy, or edit defaults in{' '}
+                    <code className="rounded bg-neutral-200 px-1">src/data/properties.ts</code>.
+                  </>
+                ) : (
+                  <>
+                    Put image files in{' '}
+                    <code className="rounded bg-neutral-200 px-1">public/images/</code>, point
+                    each card at <code className="rounded bg-neutral-200 px-1">/images/…</code>,
+                    commit and deploy. Or tweak copy here (localStorage) or edit defaults in{' '}
+                    <code className="rounded bg-neutral-200 px-1">src/data/properties.ts</code>.
+                  </>
+                )}
               </p>
             </section>
 
