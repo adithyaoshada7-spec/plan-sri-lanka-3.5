@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="800" height="600" role="img" aria-label="Negombo Lagoon Retreat">
+  <defs>
+    <linearGradient id="f" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f766e"/>
+      <stop offset="100%" stop-color="#134e4a"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="600" fill="url(#f)"/>
+  <path fill="#ffffff15" d="M0 380 Q200 320 400 400 T800 360 L800 600 L0 600 Z"/>
+</svg>

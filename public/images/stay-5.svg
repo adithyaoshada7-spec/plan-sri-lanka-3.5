@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="800" height="600" role="img" aria-label="Kandy Hills Boutique">
+  <defs>
+    <linearGradient id="e" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4c1d95"/>
+      <stop offset="100%" stop-color="#1e1b4b"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="600" fill="url(#e)"/>
+  <path fill="#ffffff18" d="M0 200 Q400 80 800 200 L800 600 L0 600 Z"/>
+</svg>

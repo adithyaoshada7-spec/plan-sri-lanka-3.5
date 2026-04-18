@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 640" width="1920" height="640" role="img" aria-label="Sri Lanka skyline">
+  <defs>
+    <linearGradient id="h" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e3a8a"/>
+      <stop offset="50%" stop-color="#0c4a6e"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+  </defs>
+  <rect width="1920" height="640" fill="url(#h)"/>
+  <path fill="#ffffff12" d="M0 400 L320 260 L640 380 L960 200 L1280 340 L1600 240 L1920 400 L1920 640 L0 640 Z"/>
+</svg>

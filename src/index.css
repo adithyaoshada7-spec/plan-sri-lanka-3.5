@@ -1,0 +1,21 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'BlinkMacSystemFont', 'Segoe UI', Roboto, Helvetica, Arial,
+    sans-serif;
+  --color-booking-blue: #003b95;
+  --color-booking-blue-dark: #001b4d;
+  --color-booking-cta: #ffb700;
+  --color-booking-cta-hover: #e6a500;
+}
+
+html {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  margin: 0;
+  color: #1a1a1a;
+  background: #f5f5f5;
+}

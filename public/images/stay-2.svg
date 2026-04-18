@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="800" height="600" role="img" aria-label="Tea Country Lodge">
+  <defs>
+    <linearGradient id="b" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#1d4a2a"/>
+      <stop offset="100%" stop-color="#3d6b3a"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="600" fill="url(#b)"/>
+  <ellipse cx="400" cy="520" rx="480" ry="180" fill="#00000028"/>
+</svg>
