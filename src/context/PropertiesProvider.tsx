@@ -6,10 +6,16 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { featuredStays, type Property } from '../data/properties'
+import {
+  defaultTrendingDestinations,
+  featuredStays,
+  type Property,
+  type TrendingDestination,
+} from '../data/properties'
 import { defaultRoomOptions, type RoomOption } from '../data/availability'
 import {
   AVAILABILITY_STORAGE_KEY,
+  DESTINATIONS_STORAGE_KEY,
   PROPERTIES_STORAGE_KEY,
 } from '../admin/constants'
 import { PropertiesContext } from './propertiesContext'
@@ -27,6 +33,30 @@ function loadFromStorage(): Property[] | null {
     return data as Property[]
   } catch {
     return null
+  }
+}
+
+function loadDestinationsFromStorage(): TrendingDestination[] | null {
+  try {
+    const raw = localStorage.getItem(DESTINATIONS_STORAGE_KEY)
+    if (!raw) return null
+    const data = JSON.parse(raw) as unknown
+    if (!Array.isArray(data)) return null
+    return data as TrendingDestination[]
+  } catch {
+    return null
+  }
+}
+
+/** When Supabase has no `trending_destinations` column, keep a browser backup. */
+function persistDestinationsLocalBackup(destinations: TrendingDestination[]) {
+  try {
+    localStorage.setItem(
+      DESTINATIONS_STORAGE_KEY,
+      JSON.stringify(destinations),
+    )
+  } catch {
+    /* quota / private mode */
   }
 }
 
@@ -98,6 +128,14 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
     )
   })
 
+  const [trendingDestinations, setTrendingDestinations] = useState<
+    TrendingDestination[]
+  >(() =>
+    cloudMode
+      ? defaultTrendingDestinations
+      : loadDestinationsFromStorage() ?? defaultTrendingDestinations,
+  )
+
   const [initialLoadDone, setInitialLoadDone] = useState(!cloudMode)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -114,9 +152,22 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
       const { data: row, error: fetchErr } = await fetchSiteContent()
       if (cancelled) return
       if (fetchErr) setLoadError(fetchErr)
-      if (row && row.properties.length > 0) {
-        setProperties(row.properties)
-        setRoomOptionsByProperty(row.roomOptionsByProperty)
+      if (row) {
+        if (row.properties.length > 0) {
+          setProperties(row.properties)
+          setRoomOptionsByProperty(row.roomOptionsByProperty)
+        }
+        if (row.trendingColumnAvailable) {
+          if (row.trendingDestinations != null) {
+            setTrendingDestinations(row.trendingDestinations)
+          } else {
+            setTrendingDestinations(defaultTrendingDestinations)
+          }
+        } else {
+          setTrendingDestinations(
+            loadDestinationsFromStorage() ?? defaultTrendingDestinations,
+          )
+        }
       }
       setInitialLoadDone(true)
     }
@@ -147,6 +198,14 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
     )
   }, [roomOptionsByProperty, cloudMode])
 
+  useEffect(() => {
+    if (cloudMode) return
+    localStorage.setItem(
+      DESTINATIONS_STORAGE_KEY,
+      JSON.stringify(trendingDestinations),
+    )
+  }, [trendingDestinations, cloudMode])
+
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -164,19 +223,25 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
         } = await supabase.auth.getSession()
         if (!session) return
 
-        const { error } = await saveSiteContent(
+        const { error, trendingPersistedToSupabase } = await saveSiteContent(
           properties,
           roomOptionsByProperty,
+          trendingDestinations,
         )
         if (error) setSaveError(error)
-        else setSaveError(null)
+        else {
+          setSaveError(null)
+          if (!trendingPersistedToSupabase) {
+            persistDestinationsLocalBackup(trendingDestinations)
+          }
+        }
       })()
     }, SAVE_DEBOUNCE_MS)
 
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
     }
-  }, [cloudMode, initialLoadDone, properties, roomOptionsByProperty])
+  }, [cloudMode, initialLoadDone, properties, roomOptionsByProperty, trendingDestinations])
 
   const updateProperty = useCallback((id: string, next: Property) => {
     setProperties((prev) =>
@@ -229,15 +294,70 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
     }))
   }, [])
 
+  const updateTrendingDestination = useCallback(
+    (id: string, next: TrendingDestination) => {
+      setTrendingDestinations((prev) =>
+        prev.map((d) => (d.id === id ? { ...next, id: d.id } : d)),
+      )
+    },
+    [],
+  )
+
+  const addTrendingDestination = useCallback(() => {
+    setTrendingDestinations((prev) => [
+      ...prev,
+      {
+        id: `dest-${Date.now()}`,
+        name: 'New destination',
+        image: '/images/dest-colombo.svg',
+      },
+    ])
+  }, [])
+
+  const removeTrendingDestination = useCallback((id: string) => {
+    setTrendingDestinations((prev) => prev.filter((d) => d.id !== id))
+  }, [])
+
+  const resetTrendingDestinationsToDefaults = useCallback(() => {
+    setTrendingDestinations([...defaultTrendingDestinations])
+    if (!cloudMode) {
+      localStorage.removeItem(DESTINATIONS_STORAGE_KEY)
+      return
+    }
+    void (async () => {
+      const supabase = getSupabase()
+      if (!supabase) return
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      if (!session) return
+      const { error, trendingPersistedToSupabase } = await saveSiteContent(
+        properties,
+        roomOptionsByProperty,
+        defaultTrendingDestinations,
+      )
+      if (error) setSaveError(error)
+      else {
+        setSaveError(null)
+        if (!trendingPersistedToSupabase) {
+          persistDestinationsLocalBackup(defaultTrendingDestinations)
+        }
+      }
+    })()
+  }, [cloudMode, properties, roomOptionsByProperty])
+
   const resetToDefaults = useCallback(() => {
     const nextProps = [...featuredStays]
     const nextRooms = buildDefaultAvailabilityByProperty(featuredStays)
+    const nextDest = [...defaultTrendingDestinations]
     setProperties(nextProps)
     setRoomOptionsByProperty(nextRooms)
+    setTrendingDestinations(nextDest)
 
     if (!cloudMode) {
       localStorage.removeItem(PROPERTIES_STORAGE_KEY)
       localStorage.removeItem(AVAILABILITY_STORAGE_KEY)
+      localStorage.removeItem(DESTINATIONS_STORAGE_KEY)
       return
     }
 
@@ -248,9 +368,18 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
         data: { session },
       } = await supabase.auth.getSession()
       if (!session) return
-      const { error } = await saveSiteContent(nextProps, nextRooms)
+      const { error, trendingPersistedToSupabase } = await saveSiteContent(
+        nextProps,
+        nextRooms,
+        nextDest,
+      )
       if (error) setSaveError(error)
-      else setSaveError(null)
+      else {
+        setSaveError(null)
+        if (!trendingPersistedToSupabase) {
+          persistDestinationsLocalBackup(nextDest)
+        }
+      }
     })()
   }, [cloudMode])
 
@@ -258,10 +387,15 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
     () => ({
       properties,
       roomOptionsByProperty,
+      trendingDestinations,
       updateProperty,
       updateRoomOption,
       addRoomOption,
       removeRoomOption,
+      updateTrendingDestination,
+      addTrendingDestination,
+      removeTrendingDestination,
+      resetTrendingDestinationsToDefaults,
       resetToDefaults,
       cloudMode,
       initialLoadDone,
@@ -272,10 +406,15 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
     [
       properties,
       roomOptionsByProperty,
+      trendingDestinations,
       updateProperty,
       updateRoomOption,
       addRoomOption,
       removeRoomOption,
+      updateTrendingDestination,
+      addTrendingDestination,
+      removeTrendingDestination,
+      resetTrendingDestinationsToDefaults,
       resetToDefaults,
       cloudMode,
       initialLoadDone,

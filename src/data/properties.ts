@@ -90,9 +90,16 @@ export const featuredStays: Property[] = [
   },
 ]
 
-export const trendingDestinations = [
-  { name: 'Colombo', image: '/images/dest-colombo.svg' },
-  { name: 'Kandy', image: '/images/dest-kandy.svg' },
-  { name: 'Galle', image: '/images/dest-galle.svg' },
-  { name: 'Ella', image: '/images/dest-ella.svg' },
+export type TrendingDestination = {
+  id: string
+  name: string
+  image: string
+}
+
+/** Default “Explore Sri Lanka” cards when nothing is saved yet. */
+export const defaultTrendingDestinations: TrendingDestination[] = [
+  { id: 'dest-1', name: 'Colombo', image: '/images/dest-colombo.svg' },
+  { id: 'dest-2', name: 'Kandy', image: '/images/dest-kandy.svg' },
+  { id: 'dest-3', name: 'Galle', image: '/images/dest-galle.svg' },
+  { id: 'dest-4', name: 'Ella', image: '/images/dest-ella.svg' },
 ]

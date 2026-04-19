@@ -19,7 +19,7 @@ export function PropertyGrid() {
             </p>
           </div>
           <Link
-            to="/admin"
+            to="/admin?section=guest-love"
             className="font-semibold text-[#003b95] no-underline hover:underline"
           >
             Edit listings (admin)

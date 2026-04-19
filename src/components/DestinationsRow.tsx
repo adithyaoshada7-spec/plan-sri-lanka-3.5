@@ -1,18 +1,31 @@
-import { trendingDestinations } from '../data/properties'
+import { Link } from 'react-router-dom'
+import { useProperties } from '../context/useProperties'
 
 export function DestinationsRow() {
+  const { trendingDestinations } = useProperties()
+
   return (
     <section className="mx-auto max-w-[1140px] px-4 py-10 md:px-6">
-      <h2 className="m-0 text-2xl font-bold text-neutral-900">
-        Explore Sri Lanka
-      </h2>
-      <p className="mt-1 text-neutral-600">
-        Popular destinations travellers pick on plan-srilanka
-      </p>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h2 className="m-0 text-2xl font-bold text-neutral-900">
+            Explore Sri Lanka
+          </h2>
+          <p className="mt-1 text-neutral-600">
+            Popular destinations travellers pick on plan-srilanka
+          </p>
+        </div>
+        <Link
+          to="/admin?section=home"
+          className="font-semibold text-[#003b95] no-underline hover:underline"
+        >
+          Edit destinations (admin)
+        </Link>
+      </div>
       <div className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-4">
         {trendingDestinations.map((d) => (
           <a
-            key={d.name}
+            key={d.id}
             href="#"
             className="group relative aspect-[4/3] overflow-hidden rounded-lg shadow-md no-underline"
           >

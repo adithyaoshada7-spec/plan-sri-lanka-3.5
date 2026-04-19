@@ -12,10 +12,13 @@ import {
   ADMIN_SESSION_KEY,
 } from '../admin/constants'
 import type { RoomOption } from '../data/availability'
-import type { Property } from '../data/properties'
+import type { Property, TrendingDestination } from '../data/properties'
 import { useProperties } from '../context/useProperties'
 import { getSupabase, isSupabaseConfigured } from '../lib/supabaseClient'
-import { uploadPropertyImage } from '../lib/uploadPropertyImage'
+import {
+  uploadDestinationImage,
+  uploadPropertyImage,
+} from '../lib/uploadPropertyImage'
 
 function isSessionValid() {
   return sessionStorage.getItem(ADMIN_SESSION_KEY) === '1'
@@ -150,6 +153,177 @@ function roomOptionEditorKey(option: RoomOption) {
 }
 
 const MAX_UPLOAD_IMAGE_BYTES = 2 * 1024 * 1024
+
+function DestinationEditor({
+  destination,
+}: {
+  destination: TrendingDestination
+}) {
+  const { updateTrendingDestination } = useProperties()
+  const [draft, setDraft] = useState(() => ({
+    name: destination.name,
+    image: destination.image,
+  }))
+  const [uploadHint, setUploadHint] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const cloudImages = isSupabaseConfigured()
+
+  useEffect(() => {
+    setDraft({ name: destination.name, image: destination.image })
+  }, [destination.id, destination.name, destination.image])
+
+  const handleSave = () => {
+    updateTrendingDestination(destination.id, {
+      id: destination.id,
+      name: draft.name.trim() || 'Destination',
+      image: draft.image.trim(),
+    })
+  }
+
+  const handleImageFile = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      setUploadHint('Please choose an image file.')
+      return
+    }
+    if (file.size > MAX_UPLOAD_IMAGE_BYTES) {
+      setUploadHint(
+        `Image is too large (max ${MAX_UPLOAD_IMAGE_BYTES / (1024 * 1024)} MB).`,
+      )
+      return
+    }
+    setUploadHint(null)
+
+    if (cloudImages) {
+      setUploading(true)
+      const result = await uploadDestinationImage(destination.id, file)
+      setUploading(false)
+      if ('error' in result) {
+        setUploadHint(result.error)
+        return
+      }
+      setDraft((prev) => {
+        const next = { ...prev, image: result.publicUrl }
+        updateTrendingDestination(destination.id, {
+          id: destination.id,
+          name: next.name.trim() || 'Destination',
+          image: result.publicUrl,
+        })
+        return next
+      })
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = () => {
+      const res = reader.result
+      if (typeof res === 'string') {
+        setDraft((prev) => ({ ...prev, image: res }))
+      }
+    }
+    reader.readAsDataURL(file)
+  }
+
+  return (
+    <fieldset className="rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
+      <legend className="px-1 text-sm font-semibold text-neutral-600">
+        Card — {destination.name}
+      </legend>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <label className="flex flex-col gap-1 text-sm sm:col-span-2">
+          <span className="font-medium text-neutral-700">Destination name</span>
+          <input
+            className="rounded border border-neutral-300 px-2 py-1.5"
+            value={draft.name}
+            onChange={(e) =>
+              setDraft((prev) => ({ ...prev, name: e.target.value }))
+            }
+          />
+        </label>
+        <div className="sm:col-span-2 flex flex-col gap-3 rounded-lg border border-neutral-200 bg-neutral-50/80 p-3 text-sm">
+          <p className="m-0 font-semibold text-neutral-800">Card image</p>
+          <p className="m-0 text-xs text-neutral-600">
+            Recommended: <strong>4∶3</strong> aspect — e.g.{' '}
+            <strong>1200×900 px</strong> (matches the home row crop).
+          </p>
+          <div className="flex flex-wrap items-stretch gap-2">
+            <input
+              className="min-w-0 flex-1 rounded border border-neutral-300 bg-white px-2 py-1.5"
+              placeholder="/images/dest-colombo.svg or https://…"
+              value={draft.image}
+              onChange={(e) =>
+                setDraft((prev) => ({ ...prev, image: e.target.value }))
+              }
+            />
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleImageFile}
+            />
+            <button
+              type="button"
+              disabled={uploading}
+              onClick={() => fileRef.current?.click()}
+              className="shrink-0 rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-800 hover:bg-neutral-100 disabled:opacity-50"
+            >
+              {uploading ? 'Uploading…' : 'Upload image'}
+            </button>
+          </div>
+          {draft.image ? (
+            <div className="flex max-w-[280px] flex-col gap-1">
+              <div className="aspect-[4/3] w-full overflow-hidden rounded border border-neutral-200 bg-neutral-200">
+                <img
+                  src={draft.image}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
+              </div>
+              <span className="text-xs text-neutral-500">
+                Preview — <strong>Save card</strong> to keep name/URL edits.
+              </span>
+            </div>
+          ) : null}
+          {uploadHint ? (
+            <p className="text-xs text-amber-800" role="status">
+              {uploadHint}
+            </p>
+          ) : null}
+          <p className="m-0 text-xs text-neutral-500">
+            {cloudImages ? (
+              <>
+                <strong>Uploads</strong> go to Supabase Storage (same bucket as
+                listings). Sign in required. You can also paste{' '}
+                <code className="rounded bg-neutral-200 px-1">/images/…</code> or
+                a hosted URL.
+              </>
+            ) : (
+              <>
+                <strong>Uploads</strong> stay in this browser (data URLs) for
+                testing. For production, use files under{' '}
+                <code className="rounded bg-neutral-200 px-1">public/images/</code>{' '}
+                or a URL.
+              </>
+            )}
+          </p>
+        </div>
+      </div>
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={handleSave}
+          className="rounded-md bg-[#003b95] px-4 py-2 text-sm font-semibold text-white hover:bg-[#002a6b]"
+        >
+          Save card
+        </button>
+      </div>
+    </fieldset>
+  )
+}
 
 function PropertyEditor({ property }: { property: Property }) {
   const { updateProperty } = useProperties()
@@ -702,6 +876,10 @@ export function AdminPage() {
   const {
     properties,
     roomOptionsByProperty,
+    trendingDestinations,
+    addTrendingDestination,
+    removeTrendingDestination,
+    resetTrendingDestinationsToDefaults,
     resetToDefaults,
     cloudMode,
     initialLoadDone,
@@ -718,7 +896,9 @@ export function AdminPage() {
   const [email, setEmail] = useState('')
   const [error, setError] = useState('')
   const [searchParams, setSearchParams] = useSearchParams()
-  const section = searchParams.get('section')
+  const rawSection = searchParams.get('section')
+  const section =
+    rawSection === 'homes' ? 'guest-love' : rawSection
 
   useEffect(() => {
     if (!supabaseConfigured) return
@@ -780,7 +960,8 @@ export function AdminPage() {
     setAuthed(false)
   }
 
-  const showHomesEditor = section === 'homes'
+  const showHomeEditor = section === 'home'
+  const showGuestLoveEditor = section === 'guest-love'
   const showAvailabilityEditor = section === 'availability'
 
   if (!authed) {
@@ -846,6 +1027,25 @@ export function AdminPage() {
 
   return (
     <div className="min-h-screen bg-neutral-100">
+      {!cloudMode ? (
+        <div
+          className="border-b border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+          role="status"
+        >
+          <p className="m-0 mx-auto max-w-3xl">
+            <strong className="font-semibold">Not synced to production.</strong> This
+            session is not using Supabase, so listing and destination edits stay in
+            this browser only. Add{' '}
+            <code className="rounded bg-amber-100/90 px-1">VITE_SUPABASE_URL</code> and{' '}
+            <code className="rounded bg-amber-100/90 px-1">VITE_SUPABASE_ANON_KEY</code>{' '}
+            (or <code className="rounded bg-amber-100/90 px-1">SUPABASE_URL</code> /{' '}
+            <code className="rounded bg-amber-100/90 px-1">SUPABASE_ANON_KEY</code>) in
+            Vercel → Environment Variables, then redeploy. UI or code changes must be{' '}
+            <strong className="font-semibold">committed and pushed</strong> so Vercel
+            can rebuild.
+          </p>
+        </div>
+      ) : null}
       <header className="border-b border-neutral-200 bg-white px-4 py-4 shadow-sm">
         <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-3">
           <div>
@@ -895,7 +1095,9 @@ export function AdminPage() {
       ) : null}
 
       <div className="mx-auto max-w-3xl space-y-6 px-4 py-8">
-        {!showHomesEditor && !showAvailabilityEditor && (
+        {!showHomeEditor &&
+          !showGuestLoveEditor &&
+          !showAvailabilityEditor && (
           <section className="space-y-4">
             <h2 className="m-0 text-lg font-semibold text-neutral-900">
               Admin Sections
@@ -903,40 +1105,129 @@ export function AdminPage() {
             <p className="m-0 text-sm text-neutral-600">
               Choose what you want to edit.
             </p>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-3">
               <button
                 type="button"
-                onClick={() => setSearchParams({ section: 'homes' })}
+                onClick={() => setSearchParams({ section: 'home' })}
                 className="text-left rounded-lg border border-neutral-200 bg-white p-5 shadow-sm transition hover:border-[#0071c2] hover:shadow-md"
               >
                 <h3 className="m-0 text-base font-semibold text-neutral-900">
-                  Homes guests love
+                  Home
+                </h3>
+                <p className="m-0 mt-2 text-sm text-neutral-600">
+                  “Explore Sri Lanka” destination cards — names and photos on the
+                  home page.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSearchParams({ section: 'guest-love' })}
+                className="text-left rounded-lg border border-neutral-200 bg-white p-5 shadow-sm transition hover:border-[#0071c2] hover:shadow-md"
+              >
+                <h3 className="m-0 text-base font-semibold text-neutral-900">
+                  Guest love
                 </h3>
                 <p className="m-0 mt-2 text-sm text-neutral-600">
                   {cloudMode
-                    ? 'Edits sync to Supabase after you sign in — everyone sees the same listings on the live site.'
-                    : 'Changes apply to the “Homes guests love” cards and are stored in this browser (localStorage).'}
+                    ? '“Homes guests love” listings — sync to Supabase when signed in.'
+                    : '“Homes guests love” cards — stored in this browser (localStorage).'}
                 </p>
               </button>
 
               <button
                 type="button"
                 onClick={() => setSearchParams({ section: 'availability' })}
-                className="text-left rounded-lg border border-neutral-200 bg-white p-5 shadow-sm transition hover:border-[#0071c2] hover:shadow-md"
+                className="text-left rounded-lg border border-neutral-200 bg-white p-5 shadow-sm transition hover:border-[#0071c2] hover:shadow-md md:col-span-1"
               >
                 <h3 className="m-0 text-base font-semibold text-neutral-900">
-                  Edit Availability Table
+                  Edit availability
                 </h3>
                 <p className="m-0 mt-2 text-sm text-neutral-600">
-                  Update the room rows shown in the Availability table on each
-                  property detail page.
+                  Room rows on each property’s Availability table.
                 </p>
               </button>
             </div>
           </section>
         )}
 
-        {showHomesEditor && (
+        {showHomeEditor && (
+          <section className="space-y-6">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="m-0 text-lg font-semibold text-neutral-900">
+                  Home — Explore Sri Lanka
+                </h2>
+                <p className="m-0 mt-1 text-sm text-neutral-600">
+                  {cloudMode
+                    ? 'Destination cards sync to Supabase when you are signed in.'
+                    : 'Changes are stored in this browser (localStorage).'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSearchParams({})}
+                className="rounded-md border border-neutral-300 px-3 py-2 text-sm font-medium hover:bg-neutral-50"
+              >
+                ← Back to admin sections
+              </button>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => addTrendingDestination()}
+                className="rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm font-medium hover:bg-neutral-50"
+              >
+                + Add destination card
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      cloudMode
+                        ? 'Reset destination cards to built-in defaults? This updates Supabase if you are signed in.'
+                        : 'Reset destination cards to built-in defaults? This clears saved cards in this browser.',
+                    )
+                  ) {
+                    resetTrendingDestinationsToDefaults()
+                  }
+                }}
+                className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100"
+              >
+                Reset destinations to defaults
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              {trendingDestinations.map((d) => (
+                <div key={d.id} className="space-y-3">
+                  <DestinationEditor destination={d} />
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (
+                          window.confirm(
+                            'Remove this destination card from the home page?',
+                          )
+                        ) {
+                          removeTrendingDestination(d.id)
+                        }
+                      }}
+                      className="rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-800 hover:bg-red-50"
+                    >
+                      Remove card
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {showGuestLoveEditor && (
           <section className="space-y-6">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>

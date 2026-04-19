@@ -10,9 +10,14 @@ create table if not exists public.site_content (
   id integer primary key default 1,
   properties jsonb not null default '[]'::jsonb,
   room_options_by_property jsonb not null default '{}'::jsonb,
+  -- Explore Sri Lanka cards; null = use app defaults until first save
+  trending_destinations jsonb,
   updated_at timestamptz not null default now(),
   constraint site_content_singleton check (id = 1)
 );
+
+alter table public.site_content
+  add column if not exists trending_destinations jsonb;
 
 create or replace function public.set_site_content_updated_at()
 returns trigger as $$

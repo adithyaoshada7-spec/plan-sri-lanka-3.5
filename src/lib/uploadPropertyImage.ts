@@ -40,3 +40,32 @@ export async function uploadPropertyImage(
   const { data } = supabase.storage.from(PROPERTY_IMAGES_BUCKET).getPublicUrl(path)
   return { publicUrl: data.publicUrl }
 }
+
+export async function uploadDestinationImage(
+  destinationId: string,
+  file: File,
+): Promise<{ publicUrl: string } | { error: string }> {
+  const supabase = getSupabase()
+  if (!supabase) return { error: 'Supabase is not configured.' }
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+  if (!session) return { error: 'Sign in to upload images to the cloud.' }
+
+  const safeId = destinationId.replace(/[^a-z0-9-]/gi, '_').slice(0, 64) || 'dest'
+  const ext = safeExt(file)
+  const path = `destinations/${safeId}/image-${Date.now()}.${ext}`
+
+  const { error: uploadError } = await supabase.storage
+    .from(PROPERTY_IMAGES_BUCKET)
+    .upload(path, file, {
+      cacheControl: '3600',
+      upsert: false,
+    })
+
+  if (uploadError) return { error: uploadError.message }
+
+  const { data } = supabase.storage.from(PROPERTY_IMAGES_BUCKET).getPublicUrl(path)
+  return { publicUrl: data.publicUrl }
+}
