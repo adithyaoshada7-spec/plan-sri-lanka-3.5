@@ -23,22 +23,41 @@ function mergeNoCacheHeaders(initHeaders?: HeadersInit): Headers {
 /**
  * Appends a unique query param so each request URL differs. Vercel Edge and some
  * browser/CDN layers key GET responses by URL; headers alone are not always enough.
+ *
+ * **Do not** add arbitrary query params to PostgREST (`/rest/v1/…`) URLs: PostgREST
+ * treats unknown params as column filters, which yields `failed to parse filter`.
  */
+/** PostgREST rejects unknown `?param=` — they are parsed as column filters ("failed to parse filter"). */
+function isPostgrestRequestUrl(u: URL): boolean {
+  const path = u.pathname.toLowerCase()
+  // Match `/rest/v1`, `/rest/v2`, … and proxy paths like `/project/ref/rest/v1/…`.
+  if (/\/rest\/v\d+/.test(path)) return true
+  // Rare custom/proxy paths; avoid bust if it looks like any REST API under the host.
+  if (path.includes('/rest/')) return true
+  return false
+}
+
 function addCacheBustToRequestInput(input: RequestInfo | URL): RequestInfo | URL {
   const ts = String(Date.now())
-  if (typeof input === 'string') {
-    const u = new URL(input)
+  const withBust = (href: string) => {
+    let u: URL
+    try {
+      u = new URL(href)
+    } catch {
+      return href
+    }
+    if (isPostgrestRequestUrl(u)) return href
     u.searchParams.set(CACHE_BUST_PARAM, ts)
     return u.toString()
   }
-  if (input instanceof URL) {
-    const u = new URL(input.href)
-    u.searchParams.set(CACHE_BUST_PARAM, ts)
-    return u
+  if (typeof input === 'string') {
+    return withBust(input)
   }
-  const u = new URL(input.url)
-  u.searchParams.set(CACHE_BUST_PARAM, ts)
-  return new Request(u.toString(), input)
+  if (input instanceof URL) {
+    return new URL(withBust(input.href))
+  }
+  const nextUrl = withBust(input.url)
+  return nextUrl === input.url ? input : new Request(nextUrl, input)
 }
 
 /**
@@ -78,10 +97,15 @@ export async function bootstrapSupabaseEnv(): Promise<void> {
       { cache: 'no-store', headers: { ...SUPABASE_FETCH_HEADERS } },
     )
     if (!r.ok) return
-    const j = (await r.json()) as { url?: string; anonKey?: string }
+    const j = (await r.json()) as {
+      url?: string
+      anonKey?: string
+      configured?: boolean
+    }
     const u = j.url?.trim()
     const k = j.anonKey?.trim()
-    if (u && k) {
+    const ok = j.configured ?? Boolean(u && k)
+    if (ok && u && k) {
       runtimeUrl = u
       runtimeAnonKey = k
       client = null

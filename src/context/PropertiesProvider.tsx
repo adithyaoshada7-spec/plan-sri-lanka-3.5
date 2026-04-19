@@ -6,23 +6,25 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import {
-  defaultTrendingDestinations,
-  featuredStays,
-  type Property,
-  type TrendingDestination,
-} from '../data/properties'
+import { useLocation } from 'react-router-dom'
+import { featuredStays, type Property } from '../data/properties'
 import { defaultRoomOptions, type RoomOption } from '../data/availability'
 import {
   AVAILABILITY_STORAGE_KEY,
-  DESTINATIONS_STORAGE_KEY,
   PROPERTIES_STORAGE_KEY,
 } from '../admin/constants'
 import { PropertiesContext } from './propertiesContext'
-import { fetchSiteContent, saveSiteContent } from '../lib/siteContent'
+import {
+  SITE_CONTENT_ROW_ID,
+  fetchSiteContent,
+  saveSiteContent,
+} from '../lib/siteContent'
 import { getSupabase, isSupabaseConfigured } from '../lib/supabaseClient'
 
 const SAVE_DEBOUNCE_MS = 600
+
+/** Legacy localStorage key for removed “Explore Sri Lanka” section. */
+const LEGACY_DESTINATIONS_STORAGE_KEY = 'plan-srilanka-trending-destinations'
 
 function loadFromStorage(): Property[] | null {
   try {
@@ -36,25 +38,12 @@ function loadFromStorage(): Property[] | null {
   }
 }
 
-function loadDestinationsFromStorage(): TrendingDestination[] | null {
+/** Supabase is source of truth; drop leftover local-only copies (not read in cloud mode). */
+function clearUnusedLocalSiteContentCache() {
   try {
-    const raw = localStorage.getItem(DESTINATIONS_STORAGE_KEY)
-    if (!raw) return null
-    const data = JSON.parse(raw) as unknown
-    if (!Array.isArray(data)) return null
-    return data as TrendingDestination[]
-  } catch {
-    return null
-  }
-}
-
-/** When Supabase has no `trending_destinations` column, keep a browser backup. */
-function persistDestinationsLocalBackup(destinations: TrendingDestination[]) {
-  try {
-    localStorage.setItem(
-      DESTINATIONS_STORAGE_KEY,
-      JSON.stringify(destinations),
-    )
+    localStorage.removeItem(PROPERTIES_STORAGE_KEY)
+    localStorage.removeItem(AVAILABILITY_STORAGE_KEY)
+    localStorage.removeItem(LEGACY_DESTINATIONS_STORAGE_KEY)
   } catch {
     /* quota / private mode */
   }
@@ -109,6 +98,8 @@ function loadAvailabilityByPropertyFromStorage(
 }
 
 export function PropertiesProvider({ children }: { children: ReactNode }) {
+  const location = useLocation()
+  const isAdminRoute = location.pathname.startsWith('/admin')
   const cloudMode = isSupabaseConfigured()
 
   const [properties, setProperties] = useState<Property[]>(() =>
@@ -128,54 +119,50 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
     )
   })
 
-  const [trendingDestinations, setTrendingDestinations] = useState<
-    TrendingDestination[]
-  >(() =>
-    cloudMode
-      ? defaultTrendingDestinations
-      : loadDestinationsFromStorage() ?? defaultTrendingDestinations,
-  )
-
   const [initialLoadDone, setInitialLoadDone] = useState(!cloudMode)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
 
   const clearSaveError = useCallback(() => setSaveError(null), [])
 
-  useEffect(() => {
-    if (!cloudMode) return
-
-    let cancelled = false
-
-    const loadFromSupabase = async () => {
+  const loadFromSupabase = useCallback(
+    async (isCancelled?: () => boolean) => {
       setLoadError(null)
       const { data: row, error: fetchErr } = await fetchSiteContent()
-      if (cancelled) return
+      if (isCancelled?.()) return
       if (fetchErr) setLoadError(fetchErr)
       if (row) {
         if (row.properties.length > 0) {
           setProperties(row.properties)
           setRoomOptionsByProperty(row.roomOptionsByProperty)
         }
-        if (row.trendingColumnAvailable) {
-          if (row.trendingDestinations != null) {
-            setTrendingDestinations(row.trendingDestinations)
-          } else {
-            setTrendingDestinations(defaultTrendingDestinations)
-          }
-        } else {
-          setTrendingDestinations(
-            loadDestinationsFromStorage() ?? defaultTrendingDestinations,
-          )
-        }
       }
       setInitialLoadDone(true)
-    }
+    },
+    [],
+  )
 
-    void loadFromSupabase()
+  useEffect(() => {
+    if (!cloudMode) return
+    clearUnusedLocalSiteContentCache()
+  }, [cloudMode])
+
+  useEffect(() => {
+    if (!cloudMode) return
+
+    let cancelled = false
+    const isCancelled = () => cancelled
+
+    queueMicrotask(() => {
+      void loadFromSupabase(isCancelled)
+    })
 
     const onPageShow = (event: PageTransitionEvent) => {
-      if (event.persisted) void loadFromSupabase()
+      if (event.persisted) {
+        queueMicrotask(() => {
+          void loadFromSupabase(isCancelled)
+        })
+      }
     }
     window.addEventListener('pageshow', onPageShow)
 
@@ -183,7 +170,50 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
       cancelled = true
       window.removeEventListener('pageshow', onPageShow)
     }
-  }, [cloudMode])
+  }, [cloudMode, loadFromSupabase])
+
+  /** Tab focus / bfcache: reload site content so Supabase dashboard edits show up (not on /admin to avoid clobbering edits). */
+  useEffect(() => {
+    if (!cloudMode || isAdminRoute) return
+
+    const onVisibility = () => {
+      if (document.visibilityState !== 'visible') return
+      void loadFromSupabase()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [cloudMode, isAdminRoute, loadFromSupabase])
+
+  /**
+   * When Realtime is enabled for `site_content`, push updates without waiting for navigation.
+   * If the table is not in the `supabase_realtime` publication, the channel simply receives no events.
+   */
+  useEffect(() => {
+    if (!cloudMode || isAdminRoute) return
+    const supabase = getSupabase()
+    if (!supabase) return
+
+    const filter = `id=eq.${SITE_CONTENT_ROW_ID}`
+    const channel = supabase
+      .channel('site_content_live')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'site_content',
+          filter,
+        },
+        () => {
+          void loadFromSupabase()
+        },
+      )
+      .subscribe()
+
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [cloudMode, isAdminRoute, loadFromSupabase])
 
   useEffect(() => {
     if (cloudMode) return
@@ -197,14 +227,6 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
       JSON.stringify(roomOptionsByProperty),
     )
   }, [roomOptionsByProperty, cloudMode])
-
-  useEffect(() => {
-    if (cloudMode) return
-    localStorage.setItem(
-      DESTINATIONS_STORAGE_KEY,
-      JSON.stringify(trendingDestinations),
-    )
-  }, [trendingDestinations, cloudMode])
 
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -223,25 +245,19 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
         } = await supabase.auth.getSession()
         if (!session) return
 
-        const { error, trendingPersistedToSupabase } = await saveSiteContent(
+        const { error } = await saveSiteContent(
           properties,
           roomOptionsByProperty,
-          trendingDestinations,
         )
         if (error) setSaveError(error)
-        else {
-          setSaveError(null)
-          if (!trendingPersistedToSupabase) {
-            persistDestinationsLocalBackup(trendingDestinations)
-          }
-        }
+        else setSaveError(null)
       })()
     }, SAVE_DEBOUNCE_MS)
 
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
     }
-  }, [cloudMode, initialLoadDone, properties, roomOptionsByProperty, trendingDestinations])
+  }, [cloudMode, initialLoadDone, properties, roomOptionsByProperty])
 
   const updateProperty = useCallback((id: string, next: Property) => {
     setProperties((prev) =>
@@ -294,70 +310,16 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
     }))
   }, [])
 
-  const updateTrendingDestination = useCallback(
-    (id: string, next: TrendingDestination) => {
-      setTrendingDestinations((prev) =>
-        prev.map((d) => (d.id === id ? { ...next, id: d.id } : d)),
-      )
-    },
-    [],
-  )
-
-  const addTrendingDestination = useCallback(() => {
-    setTrendingDestinations((prev) => [
-      ...prev,
-      {
-        id: `dest-${Date.now()}`,
-        name: 'New destination',
-        image: '/images/dest-colombo.svg',
-      },
-    ])
-  }, [])
-
-  const removeTrendingDestination = useCallback((id: string) => {
-    setTrendingDestinations((prev) => prev.filter((d) => d.id !== id))
-  }, [])
-
-  const resetTrendingDestinationsToDefaults = useCallback(() => {
-    setTrendingDestinations([...defaultTrendingDestinations])
-    if (!cloudMode) {
-      localStorage.removeItem(DESTINATIONS_STORAGE_KEY)
-      return
-    }
-    void (async () => {
-      const supabase = getSupabase()
-      if (!supabase) return
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
-      if (!session) return
-      const { error, trendingPersistedToSupabase } = await saveSiteContent(
-        properties,
-        roomOptionsByProperty,
-        defaultTrendingDestinations,
-      )
-      if (error) setSaveError(error)
-      else {
-        setSaveError(null)
-        if (!trendingPersistedToSupabase) {
-          persistDestinationsLocalBackup(defaultTrendingDestinations)
-        }
-      }
-    })()
-  }, [cloudMode, properties, roomOptionsByProperty])
-
   const resetToDefaults = useCallback(() => {
     const nextProps = [...featuredStays]
     const nextRooms = buildDefaultAvailabilityByProperty(featuredStays)
-    const nextDest = [...defaultTrendingDestinations]
     setProperties(nextProps)
     setRoomOptionsByProperty(nextRooms)
-    setTrendingDestinations(nextDest)
 
     if (!cloudMode) {
       localStorage.removeItem(PROPERTIES_STORAGE_KEY)
       localStorage.removeItem(AVAILABILITY_STORAGE_KEY)
-      localStorage.removeItem(DESTINATIONS_STORAGE_KEY)
+      localStorage.removeItem(LEGACY_DESTINATIONS_STORAGE_KEY)
       return
     }
 
@@ -368,18 +330,9 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
         data: { session },
       } = await supabase.auth.getSession()
       if (!session) return
-      const { error, trendingPersistedToSupabase } = await saveSiteContent(
-        nextProps,
-        nextRooms,
-        nextDest,
-      )
+      const { error } = await saveSiteContent(nextProps, nextRooms)
       if (error) setSaveError(error)
-      else {
-        setSaveError(null)
-        if (!trendingPersistedToSupabase) {
-          persistDestinationsLocalBackup(nextDest)
-        }
-      }
+      else setSaveError(null)
     })()
   }, [cloudMode])
 
@@ -387,15 +340,10 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
     () => ({
       properties,
       roomOptionsByProperty,
-      trendingDestinations,
       updateProperty,
       updateRoomOption,
       addRoomOption,
       removeRoomOption,
-      updateTrendingDestination,
-      addTrendingDestination,
-      removeTrendingDestination,
-      resetTrendingDestinationsToDefaults,
       resetToDefaults,
       cloudMode,
       initialLoadDone,
@@ -406,15 +354,10 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
     [
       properties,
       roomOptionsByProperty,
-      trendingDestinations,
       updateProperty,
       updateRoomOption,
       addRoomOption,
       removeRoomOption,
-      updateTrendingDestination,
-      addTrendingDestination,
-      removeTrendingDestination,
-      resetTrendingDestinationsToDefaults,
       resetToDefaults,
       cloudMode,
       initialLoadDone,

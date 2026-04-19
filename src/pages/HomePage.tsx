@@ -1,4 +1,3 @@
-import { DestinationsRow } from '../components/DestinationsRow'
 import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
 import { HeroSearch } from '../components/HeroSearch'
@@ -13,7 +12,6 @@ export function HomePage() {
       <WelcomeBanner />
       <main>
         <HeroSearch />
-        <DestinationsRow />
         <PropertyGrid />
         <PromoBanner />
       </main>

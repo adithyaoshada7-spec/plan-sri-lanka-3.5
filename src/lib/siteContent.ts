@@ -1,16 +1,27 @@
 import type { RoomOption } from '../data/availability'
-import type { Property, TrendingDestination } from '../data/properties'
+import type { Property } from '../data/properties'
 import { getSupabase } from './supabaseClient'
 
+/** Logical id of the singleton `site_content` row (for docs / future env wiring). */
 export const SITE_CONTENT_ID = 1
+
+/**
+ * Validated primary key for PostgREST `.eq('id', …)` and Realtime `filter` strings.
+ * PostgREST builds filters as `eq.${value}`; `undefined` becomes `eq.undefined` and fails to parse.
+ */
+export const SITE_CONTENT_ROW_ID: number = (() => {
+  const n = Number(SITE_CONTENT_ID)
+  if (!Number.isFinite(n)) {
+    throw new Error(
+      'siteContent: SITE_CONTENT_ID must be a finite number (see src/lib/siteContent.ts).',
+    )
+  }
+  return n
+})()
 
 export type SiteContentPayload = {
   properties: Property[]
   roomOptionsByProperty: Record<string, RoomOption[]>
-  /** Null when the column is absent or the DB value is null (see trendingColumnAvailable). */
-  trendingDestinations: TrendingDestination[] | null
-  /** False when the database has no `trending_destinations` column (fetch used a fallback query). */
-  trendingColumnAvailable: boolean
 }
 
 /** PostgREST / Postgres errors when `trending_destinations` is not in the remote schema yet. */
@@ -26,6 +37,11 @@ function missingTrendingDestinationsColumnError(
   )
 }
 
+const NO_CACHE_HEADERS = {
+  'Cache-Control': 'no-cache',
+  Pragma: 'no-cache',
+} as const
+
 export async function fetchSiteContent(): Promise<{
   data: SiteContentPayload | null
   error: string | null
@@ -36,29 +52,15 @@ export async function fetchSiteContent(): Promise<{
   type SiteRow = {
     properties: unknown
     room_options_by_property: unknown
-    trending_destinations?: unknown
   }
 
-  let trendingColumnAvailable = true
-  const first = await supabase
+  const { data, error } = await supabase
     .from('site_content')
-    .select('properties, room_options_by_property, trending_destinations')
-    .eq('id', SITE_CONTENT_ID)
+    .select('*')
+    .eq('id', SITE_CONTENT_ROW_ID)
+    .setHeader('Cache-Control', NO_CACHE_HEADERS['Cache-Control'])
+    .setHeader('Pragma', NO_CACHE_HEADERS.Pragma)
     .maybeSingle()
-
-  let data = first.data as SiteRow | null
-  let error = first.error
-
-  if (error && missingTrendingDestinationsColumnError(error)) {
-    trendingColumnAvailable = false
-    const retry = await supabase
-      .from('site_content')
-      .select('properties, room_options_by_property')
-      .eq('id', SITE_CONTENT_ID)
-      .maybeSingle()
-    data = retry.data as SiteRow | null
-    error = retry.error
-  }
 
   if (error) {
     console.error('fetchSiteContent', error.message)
@@ -66,104 +68,58 @@ export async function fetchSiteContent(): Promise<{
   }
   if (!data) return { data: null, error: null }
 
-  const {
-    properties,
-    room_options_by_property: rooms,
-    trending_destinations: trendingRaw,
-  } = data
+  const row = data as SiteRow
+  const { properties, room_options_by_property: rooms } = row
   if (!Array.isArray(properties)) return { data: null, error: null }
   if (!rooms || typeof rooms !== 'object') return { data: null, error: null }
-
-  let trendingDestinations: TrendingDestination[] | null = null
-  if (trendingColumnAvailable && Array.isArray(trendingRaw)) {
-    trendingDestinations = trendingRaw as TrendingDestination[]
-  }
 
   return {
     data: {
       properties: properties as Property[],
       roomOptionsByProperty: rooms as Record<string, RoomOption[]>,
-      trendingDestinations,
-      trendingColumnAvailable,
     },
     error: null,
   }
 }
 
-type SaveResult = {
-  error: string | null
-  /** False when `trending_destinations` was not written because the column is missing. */
-  trendingPersistedToSupabase: boolean
-}
-
 export async function saveSiteContent(
   properties: Property[],
   roomOptionsByProperty: Record<string, RoomOption[]>,
-  trendingDestinations: TrendingDestination[],
-): Promise<SaveResult> {
+): Promise<{ error: string | null }> {
   const supabase = getSupabase()
   if (!supabase) {
-    return { error: 'Supabase not configured', trendingPersistedToSupabase: false }
+    return { error: 'Supabase not configured' }
   }
 
-  const { data: existing, error: selectError } = await supabase
-    .from('site_content')
-    .select('id')
-    .eq('id', SITE_CONTENT_ID)
-    .maybeSingle()
-
-  if (selectError) {
-    return { error: selectError.message, trendingPersistedToSupabase: false }
+  const rowBase = {
+    id: SITE_CONTENT_ROW_ID,
+    properties,
+    room_options_by_property: roomOptionsByProperty,
   }
-
+  /** Legacy column — keep `[]` so existing DBs stay consistent; UI no longer edits this. */
   const payloadFull = {
-    properties,
-    room_options_by_property: roomOptionsByProperty,
-    trending_destinations: trendingDestinations,
+    ...rowBase,
+    trending_destinations: [] as unknown[],
   }
-  const payloadPartial = {
-    properties,
-    room_options_by_property: roomOptionsByProperty,
-  }
+  const payloadPartial = rowBase
 
-  if (existing) {
-    const { error } = await supabase
-      .from('site_content')
-      .update(payloadFull)
-      .eq('id', SITE_CONTENT_ID)
-    if (!error) {
-      return { error: null, trendingPersistedToSupabase: true }
-    }
-    if (!missingTrendingDestinationsColumnError(error)) {
-      return { error: error.message, trendingPersistedToSupabase: false }
-    }
-    const { error: errPartial } = await supabase
-      .from('site_content')
-      .update(payloadPartial)
-      .eq('id', SITE_CONTENT_ID)
-    if (errPartial) {
-      return { error: errPartial.message, trendingPersistedToSupabase: false }
-    }
-    return { error: null, trendingPersistedToSupabase: false }
-  }
-
-  const { error: insertError } = await supabase
+  const { error } = await supabase
     .from('site_content')
-    .insert(payloadFull)
+    .upsert(payloadFull, { onConflict: 'id' })
 
-  if (!insertError) {
-    return { error: null, trendingPersistedToSupabase: true }
+  if (!error) {
+    return { error: null }
   }
-  if (!missingTrendingDestinationsColumnError(insertError)) {
-    return { error: insertError.message, trendingPersistedToSupabase: false }
+  if (!missingTrendingDestinationsColumnError(error)) {
+    return { error: error.message }
   }
 
-  const { error: insertPartial } = await supabase
+  const { error: errPartial } = await supabase
     .from('site_content')
-    .insert(payloadPartial)
+    .upsert(payloadPartial, { onConflict: 'id' })
 
-  if (insertPartial) {
-    return { error: insertPartial.message, trendingPersistedToSupabase: false }
+  if (errPartial) {
+    return { error: errPartial.message }
   }
-  return { error: null, trendingPersistedToSupabase: false }
+  return { error: null }
 }

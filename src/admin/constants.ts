@@ -5,4 +5,3 @@ export const ADMIN_SESSION_KEY = 'plan-srilanka-admin-session'
 
 export const PROPERTIES_STORAGE_KEY = 'plan-srilanka-properties'
 export const AVAILABILITY_STORAGE_KEY = 'plan-srilanka-availability'
-export const DESTINATIONS_STORAGE_KEY = 'plan-srilanka-trending-destinations'
