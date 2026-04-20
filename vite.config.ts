@@ -27,7 +27,7 @@ function sitemapPlugin(): Plugin {
     closeBundle() {
       const env = loadEnv(mode, process.cwd(), '')
       const siteUrl = normalizeSiteUrl(
-        env.SITE_URL || process.env.SITE_URL || 'https://example.com',
+        env.SITE_URL || process.env.SITE_URL || 'https://plan-srilanka.com',
       )
 
       const staticUrls = [`${siteUrl}/`]
