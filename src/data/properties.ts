@@ -1,3 +1,51 @@
+/** Column titles for the admin Easy Availability Manager table; optional per-property overrides. */
+export type AvailabilityQuickColumnLabels = {
+  roomType: string
+  guests: string
+  price: string
+  original: string
+  taxNote: string
+  choices: string
+}
+
+export const DEFAULT_AVAILABILITY_QUICK_COLUMN_LABELS: AvailabilityQuickColumnLabels =
+  {
+    roomType: 'Room type',
+    guests: 'Guests',
+    price: 'Price',
+    original: 'Original',
+    taxNote: 'Tax note',
+    choices: 'Choices',
+  }
+
+export function resolveAvailabilityQuickColumnLabels(
+  partial: Partial<AvailabilityQuickColumnLabels> | undefined,
+): AvailabilityQuickColumnLabels {
+  const merged = {
+    ...DEFAULT_AVAILABILITY_QUICK_COLUMN_LABELS,
+    ...partial,
+  }
+  return {
+    roomType:
+      merged.roomType.trim() ||
+      DEFAULT_AVAILABILITY_QUICK_COLUMN_LABELS.roomType,
+    guests:
+      merged.guests.trim() ||
+      DEFAULT_AVAILABILITY_QUICK_COLUMN_LABELS.guests,
+    price:
+      merged.price.trim() || DEFAULT_AVAILABILITY_QUICK_COLUMN_LABELS.price,
+    original:
+      merged.original.trim() ||
+      DEFAULT_AVAILABILITY_QUICK_COLUMN_LABELS.original,
+    taxNote:
+      merged.taxNote.trim() ||
+      DEFAULT_AVAILABILITY_QUICK_COLUMN_LABELS.taxNote,
+    choices:
+      merged.choices.trim() ||
+      DEFAULT_AVAILABILITY_QUICK_COLUMN_LABELS.choices,
+  }
+}
+
 export type Property = {
   id: string
   name: string
@@ -13,6 +61,8 @@ export type Property = {
   heroImage?: string
   stars?: number
   badge?: string
+  /** Admin-only overrides for Easy Availability Manager header cells. */
+  availabilityQuickColumnLabels?: Partial<AvailabilityQuickColumnLabels>
 }
 
 export const featuredStays: Property[] = [

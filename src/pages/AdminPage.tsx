@@ -12,7 +12,11 @@ import {
   ADMIN_SESSION_KEY,
 } from '../admin/constants'
 import type { RoomOption } from '../data/availability'
-import type { Property } from '../data/properties'
+import type { AvailabilityQuickColumnLabels, Property } from '../data/properties'
+import {
+  DEFAULT_AVAILABILITY_QUICK_COLUMN_LABELS,
+  resolveAvailabilityQuickColumnLabels,
+} from '../data/properties'
 import { useProperties } from '../context/useProperties'
 import { getSupabase, isSupabaseConfigured } from '../lib/supabaseClient'
 import { uploadPropertyImage } from '../lib/uploadPropertyImage'
@@ -80,6 +84,14 @@ function draftToProperty(id: string, d: Draft): Property {
       d.heroImage.trim() === '' ? undefined : d.heroImage.trim(),
     stars,
     badge,
+  }
+}
+
+/** Keeps fields not represented on the listing draft (e.g. availability column labels). */
+function mergeListingSave(prev: Property, nextCore: Property): Property {
+  return {
+    ...nextCore,
+    availabilityQuickColumnLabels: prev.availabilityQuickColumnLabels,
   }
 }
 
@@ -171,7 +183,10 @@ function PropertyEditor({ property }: { property: Property }) {
   })
 
   const handleSave = () => {
-    updateProperty(property.id, draftToProperty(property.id, draft))
+    updateProperty(
+      property.id,
+      mergeListingSave(property, draftToProperty(property.id, draft)),
+    )
   }
 
   const handleImageFile =
@@ -202,7 +217,10 @@ function PropertyEditor({ property }: { property: Property }) {
         }
         setDraft((prev) => {
           const next = { ...prev, [field]: result.publicUrl }
-          updateProperty(property.id, draftToProperty(property.id, next))
+          updateProperty(
+            property.id,
+            mergeListingSave(property, draftToProperty(property.id, next)),
+          )
           return next
         })
         return
@@ -550,16 +568,48 @@ function AvailabilityEditor({
 
 function QuickAvailabilityManager({
   propertyId,
+  property,
   roomOptions,
 }: {
   propertyId: string
+  property: Property
   roomOptions: RoomOption[]
 }) {
   const {
     updateRoomOption,
     addRoomOption,
     removeRoomOption,
+    updateProperty,
   } = useProperties()
+
+  const partialLabels = property.availabilityQuickColumnLabels
+
+  const setQuickColumnLabel = (
+    key: keyof AvailabilityQuickColumnLabels,
+    value: string,
+  ) => {
+    updateProperty(property.id, {
+      ...property,
+      availabilityQuickColumnLabels: {
+        ...property.availabilityQuickColumnLabels,
+        [key]: value,
+      },
+    })
+  }
+
+  const headerInput = (
+    column: keyof AvailabilityQuickColumnLabels,
+    className: string,
+  ) => (
+    <input
+      type="text"
+      aria-label={`Column title: ${resolveAvailabilityQuickColumnLabels(partialLabels)[column]}`}
+      className={className}
+      value={partialLabels?.[column] ?? ''}
+      placeholder={DEFAULT_AVAILABILITY_QUICK_COLUMN_LABELS[column]}
+      onChange={(e) => setQuickColumnLabel(column, e.target.value)}
+    />
+  )
 
   return (
     <section className="space-y-4 rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
@@ -585,12 +635,42 @@ function QuickAvailabilityManager({
         <table className="min-w-[900px] w-full border-collapse text-sm">
           <thead>
             <tr className="bg-neutral-100 text-left text-neutral-700">
-              <th className="border border-neutral-200 p-2">Room type</th>
-              <th className="border border-neutral-200 p-2">Guests</th>
-              <th className="border border-neutral-200 p-2">Price</th>
-              <th className="border border-neutral-200 p-2">Original</th>
-              <th className="border border-neutral-200 p-2">Tax note</th>
-              <th className="border border-neutral-200 p-2">Choices</th>
+              <th className="border border-neutral-200 p-2 font-normal">
+                {headerInput(
+                  'roomType',
+                  'w-full min-w-[8rem] rounded border border-neutral-300 bg-white px-2 py-1 font-medium text-neutral-900',
+                )}
+              </th>
+              <th className="border border-neutral-200 p-2 font-normal">
+                {headerInput(
+                  'guests',
+                  'w-full min-w-[4rem] rounded border border-neutral-300 bg-white px-2 py-1 font-medium text-neutral-900',
+                )}
+              </th>
+              <th className="border border-neutral-200 p-2 font-normal">
+                {headerInput(
+                  'price',
+                  'w-full min-w-[4rem] rounded border border-neutral-300 bg-white px-2 py-1 font-medium text-neutral-900',
+                )}
+              </th>
+              <th className="border border-neutral-200 p-2 font-normal">
+                {headerInput(
+                  'original',
+                  'w-full min-w-[4rem] rounded border border-neutral-300 bg-white px-2 py-1 font-medium text-neutral-900',
+                )}
+              </th>
+              <th className="border border-neutral-200 p-2 font-normal">
+                {headerInput(
+                  'taxNote',
+                  'w-full min-w-[6rem] rounded border border-neutral-300 bg-white px-2 py-1 font-medium text-neutral-900',
+                )}
+              </th>
+              <th className="border border-neutral-200 p-2 font-normal">
+                {headerInput(
+                  'choices',
+                  'w-full min-w-[6rem] rounded border border-neutral-300 bg-white px-2 py-1 font-medium text-neutral-900',
+                )}
+              </th>
               <th className="border border-neutral-200 p-2">Action</th>
             </tr>
           </thead>
@@ -1068,6 +1148,7 @@ export function AdminPage() {
                     </p>
                     <QuickAvailabilityManager
                       propertyId={property.id}
+                      property={property}
                       roomOptions={propertyOptions}
                     />
                     <div className="space-y-6">
