@@ -295,7 +295,7 @@ export function PropertiesProvider({ children }: { children: ReactNode }) {
             guests: 2,
             price: 0,
             originalPrice: 0,
-            taxNote: '+LKR 0 taxes and fees',
+            taxNote: '+USD 0 taxes and fees',
             choices: ['Add benefits here'],
           },
         ],

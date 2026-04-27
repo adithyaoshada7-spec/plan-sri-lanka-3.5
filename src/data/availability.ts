@@ -15,7 +15,7 @@ export const defaultRoomOptions: RoomOption[] = [
     guests: 2,
     price: 61996,
     originalPrice: 82664,
-    taxNote: '+LKR 20,221 taxes and fees',
+    taxNote: '+USD 20,221 taxes and fees',
     choices: [
       'Very good breakfast included',
       'Includes 15% off food/drink + parking + high-speed internet',
@@ -29,7 +29,7 @@ export const defaultRoomOptions: RoomOption[] = [
     guests: 2,
     price: 64362,
     originalPrice: 85816,
-    taxNote: '+LKR 20,992 taxes and fees',
+    taxNote: '+USD 20,992 taxes and fees',
     choices: [
       'Breakfast and dinner included',
       'Includes 15% off food/drink + parking + high-speed internet',
@@ -43,7 +43,7 @@ export const defaultRoomOptions: RoomOption[] = [
     guests: 4,
     price: 83292,
     originalPrice: 111056,
-    taxNote: '+LKR 27,166 taxes and fees',
+    taxNote: '+USD 27,166 taxes and fees',
     choices: [
       'Breakfast, lunch and dinner included',
       'Includes 15% off food/drink + parking + high-speed internet',

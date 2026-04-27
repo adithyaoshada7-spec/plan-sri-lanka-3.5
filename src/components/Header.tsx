@@ -30,7 +30,7 @@ export function Header() {
             type="button"
             className="hidden rounded-md px-2 py-1.5 font-medium text-[#003b95] hover:bg-neutral-100 sm:inline"
           >
-            LKR
+            USD
           </button>
           <button
             type="button"

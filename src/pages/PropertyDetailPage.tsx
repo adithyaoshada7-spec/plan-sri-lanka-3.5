@@ -4,8 +4,8 @@ import { Header } from '../components/Header'
 import { useProperties } from '../context/useProperties'
 import { resolveAvailabilityQuickColumnLabels } from '../data/properties'
 
-function lkr(value: number) {
-  return `LKR ${value.toLocaleString()}`
+function usd(value: number) {
+  return `USD ${value.toLocaleString()}`
 }
 
 const WHATSAPP_PHONE =
@@ -123,7 +123,7 @@ export function PropertyDetailPage() {
         <section className="mt-8 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm md:p-6">
           <h2 className="m-0 text-2xl font-bold text-neutral-900">Availability</h2>
           <p className="mt-1 text-neutral-600">
-            Pick a room option and reserve your stay at {property.name}.
+            Pick a package option and reserve your stay at {property.name}.
           </p>
 
           <div className="mt-4 flex flex-wrap items-center gap-4 text-sm text-neutral-700">
@@ -175,10 +175,10 @@ export function PropertyDetailPage() {
                     </td>
                     <td className="border border-neutral-200 p-3">
                       <p className="m-0 text-xs text-neutral-500 line-through">
-                        {lkr(option.originalPrice)}
+                        {usd(option.originalPrice)}
                       </p>
                       <p className="m-0 mt-1 text-2xl font-bold text-neutral-900">
-                        {lkr(option.price)}
+                        {usd(option.price)}
                       </p>
                       <p className="m-0 mt-1 text-xs text-neutral-500">
                         {option.taxNote}
@@ -196,15 +196,6 @@ export function PropertyDetailPage() {
                     </td>
                     <td className="border border-neutral-200 p-3">
                       <div className="flex flex-col gap-3">
-                        <select
-                          className="rounded border border-neutral-300 px-2 py-1"
-                          defaultValue="0"
-                        >
-                          <option value="0">0</option>
-                          <option value="1">1</option>
-                          <option value="2">2</option>
-                          <option value="3">3</option>
-                        </select>
                         <button
                           type="button"
                           className="rounded bg-[#0071c2] px-3 py-2 font-semibold text-white hover:bg-[#005e9f]"
