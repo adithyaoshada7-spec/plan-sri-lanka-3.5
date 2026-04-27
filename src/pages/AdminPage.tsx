@@ -632,6 +632,22 @@ function QuickAvailabilityManager({
       </div>
 
       <div className="overflow-x-auto">
+        <div className="mb-3 grid gap-2 sm:grid-cols-[220px_1fr] sm:items-center">
+          <label
+            htmlFor={`select-rooms-header-${propertyId}`}
+            className="text-sm font-medium text-neutral-700"
+          >
+            Select rooms header
+          </label>
+          <input
+            id={`select-rooms-header-${propertyId}`}
+            type="text"
+            className="w-full rounded border border-neutral-300 bg-white px-2 py-1.5 text-sm"
+            value={partialLabels?.selectRooms ?? ''}
+            placeholder={DEFAULT_AVAILABILITY_QUICK_COLUMN_LABELS.selectRooms}
+            onChange={(e) => setQuickColumnLabel('selectRooms', e.target.value)}
+          />
+        </div>
         <table className="min-w-[900px] w-full border-collapse text-sm">
           <thead>
             <tr className="bg-neutral-100 text-left text-neutral-700">

@@ -2,6 +2,7 @@ import { Link, useParams } from 'react-router-dom'
 import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
 import { useProperties } from '../context/useProperties'
+import { resolveAvailabilityQuickColumnLabels } from '../data/properties'
 
 function lkr(value: number) {
   return `LKR ${value.toLocaleString()}`
@@ -47,6 +48,10 @@ export function PropertyDetailPage() {
       </div>
     )
   }
+
+  const availabilityColumnLabels = resolveAvailabilityQuickColumnLabels(
+    property.availabilityQuickColumnLabels,
+  )
 
   return (
     <div className="min-h-screen bg-[#f5f5f5]">
@@ -137,11 +142,21 @@ export function PropertyDetailPage() {
             <table className="min-w-[920px] w-full border-collapse text-left text-sm">
               <thead>
                 <tr className="bg-[#2c5e9e] text-white">
-                  <th className="border border-[#9eb8d9] p-3">Room type</th>
-                  <th className="border border-[#9eb8d9] p-3">Number of guests</th>
-                  <th className="border border-[#9eb8d9] p-3">Price for 2 nights</th>
-                  <th className="border border-[#9eb8d9] p-3">Your choices</th>
-                  <th className="border border-[#9eb8d9] p-3">Select rooms</th>
+                  <th className="border border-[#9eb8d9] p-3">
+                    {availabilityColumnLabels.roomType}
+                  </th>
+                  <th className="border border-[#9eb8d9] p-3">
+                    {availabilityColumnLabels.guests}
+                  </th>
+                  <th className="border border-[#9eb8d9] p-3">
+                    {availabilityColumnLabels.price}
+                  </th>
+                  <th className="border border-[#9eb8d9] p-3">
+                    {availabilityColumnLabels.choices}
+                  </th>
+                  <th className="border border-[#9eb8d9] p-3">
+                    {availabilityColumnLabels.selectRooms}
+                  </th>
                 </tr>
               </thead>
               <tbody>

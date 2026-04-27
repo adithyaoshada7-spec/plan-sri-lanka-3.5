@@ -6,6 +6,7 @@ export type AvailabilityQuickColumnLabels = {
   original: string
   taxNote: string
   choices: string
+  selectRooms: string
 }
 
 export const DEFAULT_AVAILABILITY_QUICK_COLUMN_LABELS: AvailabilityQuickColumnLabels =
@@ -16,6 +17,7 @@ export const DEFAULT_AVAILABILITY_QUICK_COLUMN_LABELS: AvailabilityQuickColumnLa
     original: 'Original',
     taxNote: 'Tax note',
     choices: 'Choices',
+    selectRooms: 'Select rooms',
   }
 
 export function resolveAvailabilityQuickColumnLabels(
@@ -43,6 +45,9 @@ export function resolveAvailabilityQuickColumnLabels(
     choices:
       merged.choices.trim() ||
       DEFAULT_AVAILABILITY_QUICK_COLUMN_LABELS.choices,
+    selectRooms:
+      merged.selectRooms.trim() ||
+      DEFAULT_AVAILABILITY_QUICK_COLUMN_LABELS.selectRooms,
   }
 }
 
