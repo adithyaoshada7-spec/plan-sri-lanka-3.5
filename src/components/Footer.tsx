@@ -44,8 +44,8 @@ export function Footer() {
         </div>
         <div className="mt-12 border-t border-white/20 pt-8 text-center text-xs text-white/60">
           <p className="m-0">
-            plan-srilanka is a demo front-end inspired by common travel booking
-            layouts. Not affiliated with Booking.com. Images via Unsplash.
+            © 2026 Plan-SriLanka.com | Dedicated to providing safe, reliable, and
+            unforgettable journeys across the wonder of Asia.
           </p>
         </div>
       </div>
