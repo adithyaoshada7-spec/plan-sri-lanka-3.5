@@ -175,7 +175,7 @@ function roomOptionEditorKey(option: RoomOption) {
 const MAX_UPLOAD_IMAGE_BYTES = 2 * 1024 * 1024
 
 function PropertyEditor({ property }: { property: Property }) {
-  const { updateProperty, properties } = useProperties()
+  const { updateProperty, properties, cloudMode } = useProperties()
   const [draft, setDraft] = useState(() => toDraft(property))
   const [cardUploadHint, setCardUploadHint] = useState<string | null>(null)
   const [heroUploadHint, setHeroUploadHint] = useState<string | null>(null)
@@ -211,8 +211,18 @@ function PropertyEditor({ property }: { property: Property }) {
     [properties, property.id, draftPublicSegment],
   )
 
+  /** Typing only symbols/Unicode can normalize to nothing — then the URL stays /property/{id}. */
+  const slugInvalidFormat = useMemo(
+    () =>
+      Boolean(
+        draft.slug.trim() &&
+          !normalizePropertySlugInput(draft.slug.trim()),
+      ),
+    [draft.slug],
+  )
+
   const handleSave = () => {
-    if (slugCollides) return
+    if (slugCollides || slugInvalidFormat) return
     updateProperty(
       property.id,
       mergeListingSave(property, draftToProperty(property.id, draft)),
@@ -297,14 +307,21 @@ function PropertyEditor({ property }: { property: Property }) {
             <input
               id={`listing-slug-${property.id}`}
               className={`rounded border px-2 py-1.5 ${
-                slugCollides
+                slugCollides || slugInvalidFormat
                   ? 'border-red-500 bg-red-50'
                   : 'border-neutral-300'
               }`}
               placeholder="e.g. the-blue-water-wadduwa"
               autoComplete="off"
               spellCheck={false}
-              {...field('slug')}
+              value={draft.slug}
+              onChange={(e) =>
+                setDraft((prev) => ({ ...prev, slug: e.target.value }))
+              }
+              onBlur={() => {
+                if (slugCollides || slugInvalidFormat) return
+                handleSave()
+              }}
             />
           </label>
           <p className="m-0 text-xs text-neutral-600">
@@ -323,6 +340,25 @@ function PropertyEditor({ property }: { property: Property }) {
               </span>
             ) : null}
           </p>
+          <p className="m-0 text-xs text-neutral-600">
+            Use lowercase Latin letters, numbers, and hyphens (e.g.{' '}
+            <code className="rounded bg-neutral-100 px-1">wadduwa-beach-villa</code>
+            ). This field saves when you leave it or click <strong>Save listing</strong>{' '}
+            — homepage links use that saved data.
+            {cloudMode ? (
+              <>
+                {' '}
+                Stay signed in so changes sync to the database (otherwise a refresh
+                can lose edits).
+              </>
+            ) : null}
+          </p>
+          {slugInvalidFormat ? (
+            <p className="m-0 text-xs text-red-700" role="alert">
+              This text doesn&apos;t produce a valid URL slug (use a–z, 0–9,
+              hyphens). The link would stay /property/{property.id}.
+            </p>
+          ) : null}
           {slugCollides ? (
             <p className="m-0 text-xs text-red-700" role="alert">
               This URL is already used by another listing. Choose a different
@@ -532,7 +568,7 @@ function PropertyEditor({ property }: { property: Property }) {
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <button
           type="button"
-          disabled={slugCollides}
+          disabled={slugCollides || slugInvalidFormat}
           onClick={handleSave}
           className="rounded-md bg-[#003b95] px-4 py-2 text-sm font-semibold text-white hover:bg-[#002a6b] disabled:cursor-not-allowed disabled:opacity-50"
         >
