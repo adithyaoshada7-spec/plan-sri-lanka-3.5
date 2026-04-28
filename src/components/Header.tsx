@@ -38,18 +38,6 @@ export function Header() {
           >
             List your property
           </button>
-          <a
-            href="#"
-            className="rounded-md px-3 py-2 font-medium text-[#003b95] no-underline hover:bg-neutral-100"
-          >
-            Register
-          </a>
-          <a
-            href="#"
-            className="rounded-md border border-[#003b95] bg-[#003b95] px-4 py-2 font-medium text-white no-underline hover:bg-[#002a6b]"
-          >
-            Sign in
-          </a>
         </div>
       </div>
     </header>

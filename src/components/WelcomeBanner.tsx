@@ -5,8 +5,6 @@ export function WelcomeBanner() {
         Welcome to{' '}
         <span className="font-bold">plan</span>
         <span className="font-bold text-[#c28400]">srilanka</span>
-        {' — '}
-        find hotels and homes for your trip across the island.
       </p>
     </div>
   )
