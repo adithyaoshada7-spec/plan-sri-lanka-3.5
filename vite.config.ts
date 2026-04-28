@@ -98,6 +98,7 @@ export default defineConfig(({ mode }) => {
   const supabaseReady = Boolean(
     supabaseUrl.trim() && supabaseAnonKey.trim(),
   )
+  const buildTimeIso = new Date().toISOString()
 
   if (process.env.VERCEL === '1' && mode === 'production' && !supabaseReady) {
     console.warn(
@@ -112,6 +113,7 @@ export default defineConfig(({ mode }) => {
     define: {
       'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(supabaseUrl),
       'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(supabaseAnonKey),
+      'import.meta.env.VITE_BUILD_TIME_ISO': JSON.stringify(buildTimeIso),
     },
     plugins: [react(), tailwindcss(), sitemapPlugin()],
   }
