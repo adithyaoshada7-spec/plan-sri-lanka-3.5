@@ -49,6 +49,7 @@ type Draft = {
   heroImage: string
   stars: string
   badge: string
+  proTip: string
 }
 
 function toDraft(p: Property): Draft {
@@ -65,6 +66,7 @@ function toDraft(p: Property): Draft {
     heroImage: p.heroImage ?? '',
     stars: p.stars != null ? String(p.stars) : '',
     badge: p.badge ?? '',
+    proTip: p.proTip ?? '',
   }
 }
 
@@ -75,6 +77,7 @@ function draftToProperty(id: string, d: Draft): Property {
       ? starsNum
       : undefined
   const badge = d.badge.trim() === '' ? undefined : d.badge.trim()
+  const proTip = d.proTip.trim() === '' ? undefined : d.proTip.trim()
   const slugRaw = d.slug.trim()
   const slug = slugRaw
     ? normalizePropertySlugInput(slugRaw) || undefined
@@ -94,6 +97,7 @@ function draftToProperty(id: string, d: Draft): Property {
       d.heroImage.trim() === '' ? undefined : d.heroImage.trim(),
     stars,
     badge,
+    proTip,
   }
 }
 
@@ -120,6 +124,7 @@ function propertyEditorKey(p: Property) {
     p.heroImage ?? '',
     p.stars ?? '',
     p.badge ?? '',
+    p.proTip ?? '',
   ].join('|')
 }
 
@@ -563,6 +568,21 @@ function PropertyEditor({ property }: { property: Property }) {
             placeholder="e.g. Free cancellation"
             {...field('badge')}
           />
+        </label>
+        <label className="sm:col-span-2 flex flex-col gap-1 text-sm">
+          <span className="font-medium text-neutral-700">Pro Tip (optional)</span>
+          <textarea
+            rows={4}
+            className="rounded border border-neutral-300 px-2 py-1.5"
+            placeholder="Write a short blog-style tip shown below the availability table. Use **bold text** for bold parts."
+            value={draft.proTip}
+            onChange={(e) =>
+              setDraft((prev) => ({ ...prev, proTip: e.target.value }))
+            }
+          />
+          <span className="text-xs text-neutral-500">
+            Formatting: wrap words with <code className="rounded bg-neutral-100 px-1">**</code> to make them bold (example: <code className="rounded bg-neutral-100 px-1">Save **20%** this week</code>).
+          </span>
         </label>
       </div>
       <div className="mt-4 flex flex-wrap items-center gap-3">

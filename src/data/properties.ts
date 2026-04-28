@@ -71,6 +71,8 @@ export type Property = {
   heroImage?: string
   stars?: number
   badge?: string
+  /** Optional blog-style tip shown below the availability table. */
+  proTip?: string
   /** Admin-only overrides for Easy Availability Manager header cells. */
   availabilityQuickColumnLabels?: Partial<AvailabilityQuickColumnLabels>
 }

@@ -1,9 +1,11 @@
+import { useEffect } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
 import { useProperties } from '../context/useProperties'
 import {
   findPropertyByUrlSegment,
+  propertyUrlSegment,
   resolveAvailabilityQuickColumnLabels,
 } from '../data/properties'
 
@@ -15,11 +17,60 @@ const WHATSAPP_PHONE =
   (import.meta.env.VITE_WHATSAPP_PHONE as string | undefined)?.replace(
     /\D/g,
     '',
-  ) || '94722668210'
+  ) || '94722968210'
 
 function whatsappReserveUrl(propertyName: string, roomType: string) {
   const text = `Hi, I'd like to reserve: ${roomType} at ${propertyName}`
   return `https://wa.me/${WHATSAPP_PHONE}?text=${encodeURIComponent(text)}`
+}
+
+function renderBoldMarkdown(text: string) {
+  return text.split(/(\*\*[^*]+\*\*)/g).map((part, index) => {
+    const match = /^\*\*([^*]+)\*\*$/.exec(part)
+    if (match) {
+      return <strong key={`bold-${index}`}>{match[1]}</strong>
+    }
+    return part
+  })
+}
+
+function toPlainText(input: string) {
+  return input
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function truncateForMeta(input: string, max = 160) {
+  if (input.length <= max) return input
+  return `${input.slice(0, max - 1).trimEnd()}…`
+}
+
+function setOrCreateMetaTag(
+  key: 'name' | 'property',
+  value: string,
+  content: string,
+) {
+  const selector = `meta[${key}="${value}"]`
+  let tag = document.head.querySelector(selector) as HTMLMetaElement | null
+  if (!tag) {
+    tag = document.createElement('meta')
+    tag.setAttribute(key, value)
+    document.head.appendChild(tag)
+  }
+  tag.setAttribute('content', content)
+}
+
+function setOrCreateCanonicalTag(href: string) {
+  let link = document.head.querySelector(
+    'link[rel="canonical"]',
+  ) as HTMLLinkElement | null
+  if (!link) {
+    link = document.createElement('link')
+    link.setAttribute('rel', 'canonical')
+    document.head.appendChild(link)
+  }
+  link.setAttribute('href', href)
 }
 
 export function PropertyDetailPage() {
@@ -56,6 +107,32 @@ export function PropertyDetailPage() {
   const availabilityColumnLabels = resolveAvailabilityQuickColumnLabels(
     property.availabilityQuickColumnLabels,
   )
+  const proTipText =
+    property.proTip?.trim() ||
+    `Booking mid-week often unlocks better rates and quieter stays. If your dates are flexible, compare one or two weekdays before reserving to get the best value at ${property.name}.`
+  const plainProTip = toPlainText(proTipText)
+
+  useEffect(() => {
+    const previousTitle = document.title
+    const segment = propertyUrlSegment(property)
+    const canonicalUrl = `${window.location.origin}/property/${segment}`
+    const metaDescription = truncateForMeta(
+      `${property.name} in ${property.city}. ${property.scoreLabel} stay with ${property.reviewCount.toLocaleString()} reviews. Pro Tip: ${plainProTip}`,
+    )
+
+    document.title = `${property.name} | plan-srilanka`
+    setOrCreateMetaTag('name', 'description', metaDescription)
+    setOrCreateMetaTag('property', 'og:title', `${property.name} | plan-srilanka`)
+    setOrCreateMetaTag('property', 'og:description', metaDescription)
+    setOrCreateMetaTag('property', 'og:type', 'article')
+    setOrCreateMetaTag('property', 'og:url', canonicalUrl)
+    setOrCreateMetaTag('property', 'og:image', property.heroImage ?? property.image)
+    setOrCreateCanonicalTag(canonicalUrl)
+
+    return () => {
+      document.title = previousTitle
+    }
+  }, [property, plainProTip])
 
   return (
     <div className="min-h-screen bg-[#f5f5f5]">
@@ -234,6 +311,18 @@ export function PropertyDetailPage() {
               </tbody>
             </table>
           </div>
+        </section>
+
+        <section className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-6 shadow-sm">
+          <h3 className="m-0 flex items-center gap-2 text-xl font-bold text-amber-900">
+            <span role="img" aria-label="Pro tip">
+              💡
+            </span>
+            Pro Tip
+          </h3>
+          <p className="mt-3 whitespace-pre-line text-sm leading-7 text-amber-900 sm:text-base">
+            {renderBoldMarkdown(proTipText)}
+          </p>
         </section>
       </main>
       <Footer />
