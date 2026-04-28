@@ -15,6 +15,8 @@ import type { RoomOption } from '../data/availability'
 import type { AvailabilityQuickColumnLabels, Property } from '../data/properties'
 import {
   DEFAULT_AVAILABILITY_QUICK_COLUMN_LABELS,
+  normalizePropertySlugInput,
+  propertyUrlSegment,
   resolveAvailabilityQuickColumnLabels,
 } from '../data/properties'
 import { useProperties } from '../context/useProperties'
@@ -34,6 +36,8 @@ function clearSession() {
 }
 
 type Draft = {
+  /** SEO path under `/property/…` (e.g. `the-blue-water-wadduwa`). Empty = use listing # id. */
+  slug: string
   name: string
   city: string
   rating: string
@@ -49,6 +53,7 @@ type Draft = {
 
 function toDraft(p: Property): Draft {
   return {
+    slug: p.slug ?? '',
     name: p.name,
     city: p.city,
     rating: String(p.rating),
@@ -70,8 +75,13 @@ function draftToProperty(id: string, d: Draft): Property {
       ? starsNum
       : undefined
   const badge = d.badge.trim() === '' ? undefined : d.badge.trim()
+  const slugRaw = d.slug.trim()
+  const slug = slugRaw
+    ? normalizePropertySlugInput(slugRaw) || undefined
+    : undefined
   return {
     id,
+    slug,
     name: d.name.trim(),
     city: d.city.trim(),
     rating: Math.min(10, Math.max(0, parseFloat(d.rating) || 0)),
@@ -98,6 +108,7 @@ function mergeListingSave(prev: Property, nextCore: Property): Property {
 function propertyEditorKey(p: Property) {
   return [
     p.id,
+    p.slug ?? '',
     p.name,
     p.city,
     p.rating,
@@ -164,7 +175,7 @@ function roomOptionEditorKey(option: RoomOption) {
 const MAX_UPLOAD_IMAGE_BYTES = 2 * 1024 * 1024
 
 function PropertyEditor({ property }: { property: Property }) {
-  const { updateProperty } = useProperties()
+  const { updateProperty, properties } = useProperties()
   const [draft, setDraft] = useState(() => toDraft(property))
   const [cardUploadHint, setCardUploadHint] = useState<string | null>(null)
   const [heroUploadHint, setHeroUploadHint] = useState<string | null>(null)
@@ -182,7 +193,26 @@ function PropertyEditor({ property }: { property: Property }) {
     },
   })
 
+  const draftPublicSegment = useMemo(
+    () =>
+      propertyUrlSegment(
+        mergeListingSave(property, draftToProperty(property.id, draft)),
+      ),
+    [property, draft],
+  )
+
+  const slugCollides = useMemo(
+    () =>
+      properties.some(
+        (p) =>
+          p.id !== property.id &&
+          propertyUrlSegment(p) === draftPublicSegment,
+      ),
+    [properties, property.id, draftPublicSegment],
+  )
+
   const handleSave = () => {
+    if (slugCollides) return
     updateProperty(
       property.id,
       mergeListingSave(property, draftToProperty(property.id, draft)),
@@ -256,6 +286,50 @@ function PropertyEditor({ property }: { property: Property }) {
             {...field('city')}
           />
         </label>
+        <div className="sm:col-span-2 flex flex-col gap-1 text-sm">
+          <label
+            className="flex flex-col gap-1"
+            htmlFor={`listing-slug-${property.id}`}
+          >
+            <span className="font-medium text-neutral-700">
+              Public URL slug (SEO)
+            </span>
+            <input
+              id={`listing-slug-${property.id}`}
+              className={`rounded border px-2 py-1.5 ${
+                slugCollides
+                  ? 'border-red-500 bg-red-50'
+                  : 'border-neutral-300'
+              }`}
+              placeholder="e.g. the-blue-water-wadduwa"
+              autoComplete="off"
+              spellCheck={false}
+              {...field('slug')}
+            />
+          </label>
+          <p className="m-0 text-xs text-neutral-600">
+            Page path:{' '}
+            <code className="rounded bg-neutral-100 px-1">
+              /property/{draftPublicSegment}
+            </code>
+            {draft.slug.trim() === '' ? (
+              <span className="text-neutral-500">
+                {' '}
+                (leave empty to use{' '}
+                <code className="rounded bg-neutral-100 px-1">
+                  /property/{property.id}
+                </code>
+                )
+              </span>
+            ) : null}
+          </p>
+          {slugCollides ? (
+            <p className="m-0 text-xs text-red-700" role="alert">
+              This URL is already used by another listing. Choose a different
+              slug.
+            </p>
+          ) : null}
+        </div>
         <label className="flex flex-col gap-1 text-sm">
           <span className="font-medium text-neutral-700">Rating (0–10)</span>
           <input
@@ -458,8 +532,9 @@ function PropertyEditor({ property }: { property: Property }) {
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <button
           type="button"
+          disabled={slugCollides}
           onClick={handleSave}
-          className="rounded-md bg-[#003b95] px-4 py-2 text-sm font-semibold text-white hover:bg-[#002a6b]"
+          className="rounded-md bg-[#003b95] px-4 py-2 text-sm font-semibold text-white hover:bg-[#002a6b] disabled:cursor-not-allowed disabled:opacity-50"
         >
           Save listing
         </button>

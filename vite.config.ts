@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import { defineConfig, loadEnv, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
-import { featuredStays } from './src/data/properties'
+import { featuredStays, propertyUrlSegment } from './src/data/properties'
 
 function normalizeSiteUrl(raw: string): string {
   const trimmed = raw.trim().replace(/\/+$/, '')
@@ -32,7 +32,7 @@ function sitemapPlugin(): Plugin {
 
       const staticUrls = [`${siteUrl}/`]
       const propertyUrls = featuredStays.map(
-        (p) => `${siteUrl}/property/${p.id}`,
+        (p) => `${siteUrl}/property/${propertyUrlSegment(p)}`,
       )
 
       const urlEntries = [

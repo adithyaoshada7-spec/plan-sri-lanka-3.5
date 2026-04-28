@@ -22,7 +22,7 @@ export function PropertyGrid() {
             <PropertyCard
               key={p.id}
               property={p}
-              onSelect={(propertyId) => navigate(`/property/${propertyId}`)}
+              onSelect={(segment) => navigate(`/property/${segment}`)}
             />
           ))}
         </div>

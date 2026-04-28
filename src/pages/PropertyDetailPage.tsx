@@ -2,7 +2,10 @@ import { Link, useParams } from 'react-router-dom'
 import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
 import { useProperties } from '../context/useProperties'
-import { resolveAvailabilityQuickColumnLabels } from '../data/properties'
+import {
+  findPropertyByUrlSegment,
+  resolveAvailabilityQuickColumnLabels,
+} from '../data/properties'
 
 function usd(value: number) {
   return `USD ${value.toLocaleString()}`
@@ -20,11 +23,12 @@ function whatsappReserveUrl(propertyName: string, roomType: string) {
 }
 
 export function PropertyDetailPage() {
-  const { propertyId } = useParams<{ propertyId: string }>()
+  const { propertyId: urlSegment } = useParams<{ propertyId: string }>()
   const { properties, roomOptionsByProperty } = useProperties()
 
-  const property = properties.find((p) => p.id === propertyId)
-  const roomOptions = propertyId ? roomOptionsByProperty[propertyId] ?? [] : []
+  const property = findPropertyByUrlSegment(properties, urlSegment)
+  const roomOptions =
+    property ? roomOptionsByProperty[property.id] ?? [] : []
 
   if (!property) {
     return (

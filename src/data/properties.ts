@@ -53,6 +53,11 @@ export function resolveAvailabilityQuickColumnLabels(
 
 export type Property = {
   id: string
+  /**
+   * Optional SEO slug for `/property/your-slug` (e.g. `the-blue-water-wadduwa`).
+   * Omit or leave empty to keep `/property/{id}`.
+   */
+  slug?: string
   name: string
   city: string
   rating: number
@@ -70,9 +75,43 @@ export type Property = {
   availabilityQuickColumnLabels?: Partial<AvailabilityQuickColumnLabels>
 }
 
+/** Lowercase hyphenated path segment for `/property/:segment` (SEO). Empty uses listing id. */
+export function normalizePropertySlugInput(raw: string): string {
+  const s = raw
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, '-')
+    .replace(/[^a-z0-9-]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+  return s
+}
+
+/**
+ * Public URL path segment for this listing (`/property/${segment}`).
+ * Uses custom `slug` when set; otherwise the internal listing `id` (e.g. `1`).
+ */
+export function propertyUrlSegment(property: Property): string {
+  const raw = property.slug?.trim()
+  if (!raw) return property.id
+  return normalizePropertySlugInput(raw) || property.id
+}
+
+/** Resolve a listing from the URL param (supports slug, or legacy id-only links). */
+export function findPropertyByUrlSegment(
+  properties: Property[],
+  segment: string | undefined,
+): Property | undefined {
+  if (!segment) return undefined
+  const bySegment = properties.find((p) => propertyUrlSegment(p) === segment)
+  if (bySegment) return bySegment
+  return properties.find((p) => p.id === segment)
+}
+
 export const featuredStays: Property[] = [
   {
     id: '1',
+    slug: 'galle-face-ocean-suites-colombo',
     name: 'Galle Face Ocean Suites',
     city: 'Colombo',
     rating: 9.2,
@@ -86,6 +125,7 @@ export const featuredStays: Property[] = [
   },
   {
     id: '2',
+    slug: 'tea-country-lodge-ella',
     name: 'Tea Country Lodge — Ella',
     city: 'Ella',
     rating: 9.6,
@@ -98,6 +138,7 @@ export const featuredStays: Property[] = [
   },
   {
     id: '3',
+    slug: 'sigiriya-rock-view-resort-dambulla',
     name: 'Sigiriya Rock View Resort',
     city: 'Dambulla',
     rating: 8.9,
@@ -110,6 +151,7 @@ export const featuredStays: Property[] = [
   },
   {
     id: '4',
+    slug: 'mirissa-palm-villas',
     name: 'Mirissa Palm Villas',
     city: 'Mirissa',
     rating: 9.4,
@@ -121,6 +163,7 @@ export const featuredStays: Property[] = [
   },
   {
     id: '5',
+    slug: 'kandy-hills-boutique-hotel',
     name: 'Kandy Hills Boutique Hotel',
     city: 'Kandy',
     rating: 8.7,
@@ -134,6 +177,7 @@ export const featuredStays: Property[] = [
   },
   {
     id: '6',
+    slug: 'negombo-lagoon-retreat',
     name: 'Negombo Lagoon Retreat',
     city: 'Negombo',
     rating: 8.5,

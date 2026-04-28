@@ -1,15 +1,16 @@
-import type { Property } from '../data/properties'
+import { propertyUrlSegment, type Property } from '../data/properties'
 
 type Props = {
   property: Property
-  onSelect?: (propertyId: string) => void
+  /** Receives the URL segment for `/property/:segment` (slug or listing id). */
+  onSelect?: (propertyUrlSegment: string) => void
 }
 
 export function PropertyCard({ property: p, onSelect }: Props) {
   const isClickable = Boolean(onSelect)
 
   const handleSelect = () => {
-    onSelect?.(p.id)
+    onSelect?.(propertyUrlSegment(p))
   }
 
   return (
